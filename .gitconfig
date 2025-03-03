@@ -1,0 +1,16 @@
+[includeIf "gitdir:~/"]
+    path = ~/.gitconfig.local
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+[user]
+	email = tihonov.ea@gmail.com
+	name = Eugene Tihonov
+[core]
+	editor = code --wait
+[init]
+	defaultBranch = main
+[merge]
+    ff = no
