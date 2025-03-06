@@ -16,3 +16,5 @@
     ff = no
 [alias]
 	tree = log --graph --oneline --decorate
+[pull]
+	rebase = true
