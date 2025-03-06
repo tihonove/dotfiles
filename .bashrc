@@ -136,6 +136,7 @@ fi
 # Or, maybe: npm completion > /usr/local/etc/bash_completion.d/npm
 #
 
+
 if type complete &>/dev/null; then
   _npm_completion () {
     local words cword
@@ -198,14 +199,14 @@ elif type compctl &>/dev/null; then
 fi
 ###-end-npm-completion-###
 
-# Включаем автодополнение для kubectl, если он установлен
-if command -v kubectl &>/dev/null; then
-    source <(kubectl completion bash)
 
-    # Если используешь алиас "k", добавляем автодополнение и для него
-    alias k=kubectl
-    complete -o default -F __start_kubectl k
-fi
+# Включаем автодополнение для kubectl, если он установлен
+source ~/.kubectl_completion
+
+# Если используешь алиас "k", добавляем автодополнение и для него
+alias k=kubectl
+complete -o default -F __start_kubectl k
+
 
 if [ -f ~/.bashrc.local ]; then
     source ~/.bashrc.local
