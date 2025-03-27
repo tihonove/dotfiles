@@ -207,6 +207,8 @@ source ~/.kubectl_completion
 alias k=kubectl
 complete -o default -F __start_kubectl k
 
+source ~/.tmux_completion
+
 
 if [ -f ~/.bashrc.local ]; then
     source ~/.bashrc.local
