@@ -1,0 +1,11 @@
+Package: liquidprompt
+Version: 2.2.0
+Section: base
+Priority: optional
+Architecture: all
+Depends: bash, coreutils
+Recommends: acpi
+Suggests: git, svn, fossil, mercurial, bzr, cmake, screen, tmux
+Maintainer: Julien Pecqueur <jpec@julienpecqueur.net>
+Description: A full-featured & carefully designed adaptive prompt for Bash & Zsh.
+Homepage: http://github.com/liquidprompt/liquidprompt

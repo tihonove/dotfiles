@@ -213,3 +213,7 @@ source ~/.tmux_completion
 if [ -f ~/.bashrc.local ]; then
     source ~/.bashrc.local
 fi
+
+[[ $- = *i* ]] && source ~/.liquidprompt/liquidprompt
+source ~/.liquidprompt/themes/powerline/powerline.theme
+lp_theme powerline
