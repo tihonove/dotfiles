@@ -28,3 +28,6 @@ untracked = "*"
 ahead = ""
 behind = ""
 diverged = ""
+
+[hostname]
+format = "[$ssh_symbol$hostname]($style)"
