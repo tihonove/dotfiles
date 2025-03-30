@@ -213,3 +213,19 @@ source ~/.tmux_completion
 if [ -f ~/.bashrc.local ]; then
     source ~/.bashrc.local
 fi
+
+export STARSHIP_CONFIG="$HOME/.starship.config.toml"
+
+case $(uname -m) in
+  x86_64)
+    STARSHIP="$HOME/.starship.x86"
+    ;;
+  aarch64)
+    STARSHIP="$HOME/.starship.arm"
+    ;;
+  *)
+    echo "Unknown architecture: $(uname -m)" >&2
+    ;;
+esac
+
+eval "$($STARSHIP init bash)"

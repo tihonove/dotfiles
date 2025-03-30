@@ -1,0 +1,58 @@
+# Двухстрочный вывод
+format = """\
+$directory$git_branch$git_status$ssh_symbol
+$cmd_duration$character"""
+
+add_newline = false
+
+# 👤 Показывать пользователя только если root или не ты
+[username]
+show_always = false
+show_always_in_prompt = false
+disabled = false
+style_user = "yellow"
+style_root = "bold red"
+
+# Показывать, если пользователь не совпадает с текущим логином
+detect_env_vars = ["USER", "LOGNAME"]
+
+# 📂 Каталог
+[directory]
+truncation_length = 3
+truncate_to_repo = false
+style = "blue"
+
+# 🌱 Ветка git
+[git_branch]
+symbol = " "
+style = "green"
+only_attached = true
+
+# ✳️ Только флаг изменений
+[git_status]
+format = " [$all_status]($style)"
+style = "yellow"
+disabled = false
+staged = ""
+deleted = ""
+modified = "±"
+untracked = "*"
+ahead = ""
+behind = ""
+diverged = ""
+
+# ⌛ Время выполнения
+[cmd_duration]
+min_time = 1000  # показывать, если >1 сек
+format = "⏱ [$duration]($style)\n"
+style = "bold yellow"
+
+# 🌐 SSH
+[hostname]
+ssh_symbol = " 🌐 "
+
+# ➜ Простой символ приглашения
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"
+vicmd_symbol = "[❮](bold yellow)"
