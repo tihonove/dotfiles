@@ -209,6 +209,9 @@ complete -o default -F __start_kubectl k
 
 source ~/.tmux_completion
 
+update-dotfiles () {
+  bash -c "$(curl -fsSL https://gist.githubusercontent.com/tihonove/972c8b69f706b33cc76e967221136e8f/raw/install.sh)"
+}
 
 if [ -f ~/.bashrc.local ]; then
     source ~/.bashrc.local
