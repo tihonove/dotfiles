@@ -5,6 +5,9 @@ $character"""
 
 add_newline = false
 
+[fill]
+symbol = ' '
+
 # 👤 Показывать пользователя только если root или не ты
 [username]
 show_always = false
