@@ -117,7 +117,7 @@ ___MY_VMOPTIONS_SHELL_FILE="${HOME}/.jetbrains.vmoptions.sh"; if [ -f "${___MY_V
 
 
 candy() {
-    npx --yes --package=@kontur.candy/tools@2.215.0 candy "$@"
+    npx --yes --package=@kontur.candy/tools@2.222.0 candy "$@"
 }
 
 dcandy() {    
