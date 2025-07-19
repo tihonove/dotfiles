@@ -4,7 +4,7 @@
             "complex_modifications": {
                 "rules": [
                     {
-                        "description": "Open Terminal (Command+Control+T)",
+                        "description": "Open Terminal: ⌘⌃T",
                         "manipulators": [
                             {
                                 "from": {
@@ -26,7 +26,7 @@
                         ]
                     },
                     {
-                        "description": "Open Finder (Option+E)",
+                        "description": "Open Finder: ⌥E",
                         "manipulators": [
                             {
                                 "from": {
@@ -47,7 +47,7 @@
                         ]
                     },
                     {
-                        "description": "Switch input source when both shift keys are pressed",
+                        "description": "Switch input source: ⇧⇧ to Fn",
                         "manipulators": [
                             {
                                 "from": {
@@ -107,7 +107,7 @@
                         ]
                     },
                     {
-                        "description": "Move by word by Command + (+ Shift) + Arrow",
+                        "description": "Move by word: ⌘(⇧)←→ to ⌥(⇧)←→",
                         "manipulators": [
                             {
                                 "from": {
@@ -192,7 +192,7 @@
                         ]
                     },
                     {
-                        "description": "Command + Backspace → Delete word left (Option + Backspace)",
+                        "description": "Delete word left: ⌘⌫ to ⌥⌫",
                         "manipulators": [
                             {
                                 "from": {
@@ -216,7 +216,7 @@
                         ]
                     },
                     {
-                        "description": "Option + Backspace → Delete (Option + Backspace)",
+                        "description": "Delete line/all: ⌥⌫ to ⌘⌫",
                         "manipulators": [
                             {
                                 "from": {
@@ -240,7 +240,7 @@
                         ]
                     },
                     {
-                        "description": "Command + Delete → Delete word right (Option + Delete)",
+                        "description": "Delete word right: ⌘⌦ to ⌥⌦",
                         "manipulators": [
                             {
                                 "from": {
@@ -264,7 +264,7 @@
                         ]
                     },
                     {
-                        "description": "Swap Control + Tab and Option + Tab",
+                        "description": "Swap app/tab switching: ⌃⇥ ↔ ⌘⇥",
                         "manipulators": [
                             {
                                 "from": {
@@ -314,7 +314,7 @@
                         ]
                     },
                     {
-                        "description": "Home → Command + Right Arrow",
+                        "description": "Home to line start: Home to ⌘←",
                         "manipulators": [
                             {
                                 "from": {
@@ -333,7 +333,7 @@
                         ]
                     },
                     {
-                        "description": "End → Command + Left Arrow",
+                        "description": "End to line end: End to ⌘→",
                         "manipulators": [
                             {
                                 "from": {
@@ -352,7 +352,7 @@
                         ]
                     },
                     {
-                        "description": "Command + End → Command + Down Arrow",
+                        "description": "Document end: ⌘End to ⌘↓",
                         "manipulators": [
                             {
                                 "from": {
@@ -376,7 +376,7 @@
                         ]
                     },
                     {
-                        "description": "Command + Home → Command + Up Arrow",
+                        "description": "Document start: ⌘Home to ⌘↑",
                         "manipulators": [
                             {
                                 "from": {
@@ -400,7 +400,7 @@
                         ]
                     },
                     {
-                        "description": "Command + Shift + End → Command + Shift + Down Arrow",
+                        "description": "Select to document end: ⌘⇧End to ⌘⇧↓",
                         "manipulators": [
                             {
                                 "from": {
@@ -426,7 +426,7 @@
                         ]
                     },
                     {
-                        "description": "Command + Shift + Home → Command + Shift + Up Arrow",
+                        "description": "Select to document start: ⌘⇧Home to ⌘⇧↑",
                         "manipulators": [
                             {
                                 "from": {
@@ -452,7 +452,7 @@
                         ]
                     },
                     {
-                        "description": "Command + Down Arrow → Control + Down Arrow",
+                        "description": "Page down scroll: ⌘↓ to ⌃↓",
                         "manipulators": [
                             {
                                 "from": {
@@ -476,7 +476,7 @@
                         ]
                     },
                     {
-                        "description": "Command + Up Arrow → Control + Up Arrow",
+                        "description": "Page up scroll: ⌘↑ to ⌃↑",
                         "manipulators": [
                             {
                                 "from": {
@@ -500,7 +500,7 @@
                         ]
                     },
                     {
-                        "description": "Fn + Command + Left → Command + Up Arrow",
+                        "description": "Document start (alt): Fn⌘← to ⌘↑",
                         "manipulators": [
                             {
                                 "from": {
@@ -525,7 +525,7 @@
                         ]
                     },
                     {
-                        "description": "Fn + Command + Right → Command + Down Arrow",
+                        "description": "Document end (alt): Fn⌘→ to ⌘↓",
                         "manipulators": [
                             {
                                 "from": {
@@ -550,7 +550,7 @@
                         ]
                     },
                     {
-                        "description": "Fn + Command + Shift + Left → Command + Shift + Up Arrow",
+                        "description": "Select to document start (alt): Fn⌘⇧← to ⌘⇧↑",
                         "manipulators": [
                             {
                                 "from": {
@@ -577,7 +577,7 @@
                         ]
                     },
                     {
-                        "description": "Fn + Command + Shift + Right → Command + Shift + Down Arrow",
+                        "description": "Select to document end (alt): Fn⌘⇧→ to ⌘⇧↓",
                         "manipulators": [
                             {
                                 "from": {
