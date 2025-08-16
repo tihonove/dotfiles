@@ -103,6 +103,10 @@ done
 # Обрабатываем каталог .config отдельно
 link_config_files
 
+echo "Установка ble.sh..."
+bash .ble-nightly/ble.sh --install ~/.local/share
+echo "✅ Установка ble.sh завершена!"
+
 echo ""
 echo "✅ Установка dotfiles завершена!"
 echo ""

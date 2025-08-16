@@ -1,3 +1,5 @@
+[[ $- == *i* ]] && source -- ${HOME}/.ble-nightly/ble.sh --attach=none
+
 export PATH=$PATH
 
 # If not running interactively, don't do anything
@@ -232,3 +234,5 @@ case $(uname -m) in
 esac
 
 eval "$($STARSHIP init bash)"
+
+[[ ! ${BLE_VERSION-} ]] || ble-attach
