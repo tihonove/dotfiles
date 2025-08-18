@@ -1,6 +1,6 @@
 autoload -U compinit; compinit
 
-if [ -f '~/.zshrc.local' ]; then source '~/.zshrc.local'; fi
+if [ -f "$HOME/.zshrc.local" ]; then source "$HOME/.zshrc.local"; fi
 
 export STARSHIP_CONFIG="$HOME/.starship.config.toml"
 STARSHIP="$HOME/.starship.darwin"

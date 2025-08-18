@@ -1,3 +1,3 @@
 export PATH="~/bin:$PATH"
 
-if [ -f '~/.zshenv.local' ]; then source '~/.zshenv.local'; fi
+if [ -f "$HOME/.zshenv.local" ]; then  source "$HOME/.zshenv.local";  fi
