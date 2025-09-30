@@ -314,7 +314,7 @@
                         ]
                     },
                     {
-                        "description": "Home to line start: Home to ⌘←",
+                        "description": "Home/End to line start: Home/End to ⌘←/→",
                         "manipulators": [
                             {
                                 "from": {
@@ -332,12 +332,7 @@
                                     }
                                 ],
                                 "type": "basic"
-                            }
-                        ]
-                    },
-                    {
-                        "description": "End to line end: End to ⌘→",
-                        "manipulators": [
+                            },
                             {
                                 "from": {
                                     "key_code": "end",
