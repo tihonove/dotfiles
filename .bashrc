@@ -236,3 +236,4 @@ esac
 eval "$($STARSHIP init bash)"
 
 [[ ! ${BLE_VERSION-} ]] || ble-attach
+[ -f ~/.fzf.bash ] && source ~/.fzf.bash

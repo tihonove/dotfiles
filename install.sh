@@ -81,7 +81,7 @@ for item in "$DOTFILES_DIR"/.* "$DOTFILES_DIR"/*; do
     
     # Пропускаем специальные файлы и каталоги
     case "$basename" in
-        "." | ".." | ".git" | "install.sh" | ".config")
+        "." | ".." | ".git" | "install.sh" | ".config" | ".fzf")
             continue
             ;;
     esac
@@ -106,6 +106,10 @@ link_config_files
 echo "Установка ble.sh..."
 bash .ble-nightly/ble.sh --install ~/.local/share
 echo "✅ Установка ble.sh завершена!"
+
+echo "Установка fzf..."
+bash "$DOTFILES_DIR/.fzf/install" --key-bindings --completion --update-rc
+echo "✅ Установка fzf завершена!"
 
 echo ""
 echo "✅ Установка dotfiles завершена!"

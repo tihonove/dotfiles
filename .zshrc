@@ -9,3 +9,5 @@ eval "$($STARSHIP init zsh)"
 
 source "$HOME/.zinit.sh"
 source "$HOME/.zinit.plugins.sh"
+
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
