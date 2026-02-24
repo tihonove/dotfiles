@@ -23,6 +23,9 @@ backup_if_exists() {
     fi
 }
 
+# Каталоги в .config, которые линкуются целиком (без рекурсии)
+LINK_WHOLE_DIRS=("yazi")
+
 # Функция для линковки файлов в каталоге .config
 link_config_files() {
     local source_config="$DOTFILES_DIR/.config"
@@ -40,13 +43,40 @@ link_config_files() {
         mkdir -p "$target_config"
     fi
     
-    # Рекурсивно обходим все файлы и каталоги в .config
+    # Сначала линкуем каталоги целиком (без рекурсии)
+    for dir_name in "${LINK_WHOLE_DIRS[@]}"; do
+        local source_dir="$source_config/$dir_name"
+        local target_dir="$target_config/$dir_name"
+        if [[ -d "$source_dir" ]]; then
+            backup_if_exists "$target_dir"
+            echo "  Линкую каталог целиком: $dir_name"
+            ln -sf "$source_dir" "$target_dir"
+        fi
+    done
+    
+    # Проверяем, нужно ли пропускать каталог при рекурсивном обходе
+    is_whole_link_dir() {
+        local check_path="$1"
+        for dir_name in "${LINK_WHOLE_DIRS[@]}"; do
+            if [[ "$check_path" == "$source_config/$dir_name" || "$check_path" == "$source_config/$dir_name/"* ]]; then
+                return 0
+            fi
+        done
+        return 1
+    }
+    
+    # Рекурсивно обходим остальные файлы и каталоги в .config
     find "$source_config" -type f -o -type d | while read -r item; do
         # Получаем относительный путь от .config
         local rel_path="${item#$source_config/}"
         
         # Пропускаем сам каталог .config
         if [[ "$item" == "$source_config" ]]; then
+            continue
+        fi
+        
+        # Пропускаем каталоги, которые линкуются целиком
+        if is_whole_link_dir "$item"; then
             continue
         fi
         
