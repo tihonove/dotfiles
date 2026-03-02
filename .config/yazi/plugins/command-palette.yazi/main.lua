@@ -413,6 +413,10 @@ function M:redraw()
     offset = cursor - visible_h + 1
   end
 
+  -- Pill-shape selection: Powerline caps take 1 cell each
+  local SEL_BG = "#cba6f7" -- Catppuccin Mocha Mauve (indicator.current bg)
+  local content_w = inner.w - 2 -- usable width between left and right cap
+
   for i = offset + 1, math.min(offset + visible_h, total) do
     local cmd = filtered[i]
     local desc = cmd.desc or "No description"
@@ -425,8 +429,8 @@ function M:redraw()
     -- Build highlighted spans for desc
     local desc_spans = build_highlighted_spans(desc, cmd._desc_positions, is_selected)
 
-    -- Padding between desc and key
-    local padding_len = math.max(1, inner.w - #desc - #key_display)
+    -- Padding between desc and key (content_w excludes caps)
+    local padding_len = math.max(1, content_w - #desc - #key_display)
     local padding_span
     if is_selected then
       padding_span = ui.Span(string.rep(" ", padding_len)):style(th.indicator.current)
@@ -452,19 +456,32 @@ function M:redraw()
       end
     end
 
-    -- Combine all spans
+    -- Combine all spans with pill-shape caps for selected row
     local all_spans = {}
+
+    if is_selected then
+      -- Left rounded cap: fg = selection bg, draws  on default bg
+      all_spans[#all_spans + 1] = ui.Span("\xee\x82\xb6"):fg(SEL_BG)
+    else
+      -- Spacer to keep text aligned with selected rows
+      all_spans[#all_spans + 1] = ui.Span(" ")
+    end
+
     for _, s in ipairs(desc_spans) do all_spans[#all_spans + 1] = s end
     all_spans[#all_spans + 1] = padding_span
     for _, s in ipairs(key_spans) do all_spans[#all_spans + 1] = s end
 
-    -- Trailing padding for selected row background
+    -- Trailing padding to fill content area, then right cap
     if is_selected then
       local total_len = #desc + padding_len + #key_display
-      local extra = math.max(0, inner.w - total_len)
+      local extra = math.max(0, content_w - total_len)
       if extra > 0 then
         all_spans[#all_spans + 1] = ui.Span(string.rep(" ", extra)):style(th.indicator.current)
       end
+      -- Right rounded cap: fg = selection bg, draws  on default bg
+      all_spans[#all_spans + 1] = ui.Span("\xee\x82\xb4"):fg(SEL_BG)
+    else
+      all_spans[#all_spans + 1] = ui.Span(" ")
     end
 
     elements[#elements + 1] = ui.Line(all_spans):area(row_area)
@@ -472,7 +489,7 @@ function M:redraw()
 
   -- Empty state
   if total == 0 and filter ~= "" then
-    elements[#elements + 1] = ui.Line("  No matching commands"):fg("gray")
+    elements[#elements + 1] = ui.Line("   No matching commands"):fg("gray")
       :area(ui.Rect { x = inner.x, y = list_y, w = inner.w, h = 1 })
   end
 
