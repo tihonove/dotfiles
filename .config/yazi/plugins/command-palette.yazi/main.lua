@@ -231,9 +231,9 @@ local function show_command_palette()
       "--prompt=🔍 Command Palette: ",
       "--header=Type to search commands",
       "--preview-window=right:40%",
-      "--preview=echo {3}",
+      "--preview=echo {2}",
       "--delimiter=\t",
-      "--with-nth=1,2",
+      "--with-nth=1",
       "--bind=ctrl-/:toggle-preview"
     })
     :stdin(Command.PIPED)
@@ -246,12 +246,30 @@ local function show_command_palette()
     return
   end
   
-  -- Build input for fzf
+  -- Build input for fzf with right-aligned key bindings
   local input_lines = {}
+
+  -- Get terminal width for right-alignment (fallback to 80)
+  local term_width = 80
+  local tw_handle = io.popen("tput cols 2>/dev/null")
+  if tw_handle then
+    local tw_str = tw_handle:read("*l")
+    tw_handle:close()
+    if tw_str then
+      term_width = tonumber(tw_str) or 80
+    end
+  end
+  -- Account for fzf chrome (border, prompt indicator, padding)
+  local available_width = term_width - 6
+
   for _, cmd in ipairs(commands) do
     local desc = cmd.desc or "No description"
     local key_display = cmd.key or "No key"
-    local line = string.format("%s\t%s\t%s", desc, key_display, cmd.run)
+    local key_with_brackets = "[" .. key_display .. "]"
+    local padding = available_width - #desc - #key_with_brackets
+    if padding < 2 then padding = 2 end
+    local display = desc .. string.rep(" ", padding) .. key_with_brackets
+    local line = string.format("%s\t%s", display, cmd.run)
     table.insert(input_lines, line)
   end
   
@@ -275,8 +293,10 @@ local function show_command_palette()
     return
   end
   
-  local desc, key, run_cmd = selected_line:match("([^\t]*)\t([^\t]*)\t([^\t]*)")
+  local display, run_cmd = selected_line:match("([^\t]*)\t([^\t]*)")
   if run_cmd then
+    -- Extract description (before the padding spaces)
+    local desc = display and display:match("^(.-)%s%s") or display or "command"
     info("Executing: " .. desc)
     execute_command(run_cmd)
   end
