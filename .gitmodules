@@ -4,3 +4,6 @@
 [submodule ".fzf"]
 	path = .fzf
 	url = https://github.com/junegunn/fzf.git
+[submodule ".config/yazi/plugins/command-palette-2.yazi"]
+	path = .config/yazi/plugins/command-palette-2.yazi
+	url = git@github.com:tihonove/command-palette-2.yazi.git
