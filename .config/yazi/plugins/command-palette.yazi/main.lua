@@ -12,6 +12,18 @@ local function debug(s, ...)
   ya.notify { title = "Command Palette DEBUG", content = string.format(s, ...), timeout = 5, level = "warn" }
 end
 
+-- Load tinytoml TOML parser (https://github.com/FourierTransformer/tinytoml)
+local tinytoml
+do
+  local plugin_dir = os.getenv("HOME") .. "/.config/yazi/plugins/command-palette.yazi/"
+  local loader, err = loadfile(plugin_dir .. "tinytoml.lua")
+  if loader then
+    tinytoml = loader()
+  else
+    fail("Failed to load tinytoml: %s", tostring(err))
+  end
+end
+
 -- Get all TOML files from plugins directory
 local function get_plugin_tomls()
   local tomls = {}
@@ -29,89 +41,81 @@ local function get_plugin_tomls()
   return tomls
 end
 
--- Parse TOML keymap file to extract keybindings
-local function parse_keymap_file(file_path)
-  local commands = {}
+-- Normalize a single keymap entry from parsed TOML into {key, desc, run}
+local function normalize_keymap_entry(entry)
+  if type(entry) ~= "table" then return nil end
   
---   debug("Parsing file: " .. file_path)
-  
-  -- Read file content
-  local file = io.open(file_path, "r")
-  if not file then
-    -- debug("Could not open file: " .. file_path)
-    return commands
+  -- Normalize "on" field → key
+  local key
+  if type(entry.on) == "string" then
+    key = entry.on
+  elseif type(entry.on) == "table" then
+    local parts = {}
+    for _, k in ipairs(entry.on) do
+      parts[#parts + 1] = tostring(k)
+    end
+    key = table.concat(parts, " + ")
   end
   
-  local content = file:read("*all")
-  file:close()
+  -- Normalize "run" field
+  local run
+  if type(entry.run) == "string" then
+    run = entry.run
+  elseif type(entry.run) == "table" then
+    -- Take the first command from the array
+    run = entry.run[1] and tostring(entry.run[1]) or nil
+  end
   
---   debug("File content length: " .. #content)
+  local desc = type(entry.desc) == "string" and entry.desc or nil
   
-  -- Parse prepend_keymap entries
-  local current_entry = {}
-  local in_prepend = false
-  local entry_count = 0
+  if key and run then
+    return { key = key, desc = desc, run = run }
+  end
+  return nil
+end
+
+-- Recursively walk a parsed TOML table to find all keymap arrays
+local function collect_keymap_entries(tbl, commands)
+  if type(tbl) ~= "table" then return end
   
-  for line in content:gmatch("[^\r\n]+") do
-    line = line:gsub("^%s*", ""):gsub("%s*$", "") -- trim whitespace
-    
-    if line:match("^%[%[.*%.prepend_keymap%]%]") then
-      -- Save previous entry if complete
-      if current_entry.key and current_entry.run then
-        table.insert(commands, current_entry)
-        entry_count = entry_count + 1
+  -- Check if tbl is an array of keymap entries (first element has "on" or "run")
+  if #tbl > 0 and type(tbl[1]) == "table" and (tbl[1].on ~= nil or tbl[1].run ~= nil) then
+    for _, entry in ipairs(tbl) do
+      local cmd = normalize_keymap_entry(entry)
+      if cmd then
+        commands[#commands + 1] = cmd
       end
-      -- Start new entry
-      current_entry = {}
-      in_prepend = true
-    elseif in_prepend and line ~= "" then
-      -- Parse key binding
-      local key_match = line:match('^on%s*=%s*"([^"]*)"')
-      if key_match then
-        current_entry.key = key_match
-      else
-        local key_array = line:match('^on%s*=%s*%[([^%]]*)%]')
-        if key_array then
-          -- Convert array format to readable format
-          local keys = {}
-          for k in key_array:gmatch('"([^"]*)"') do
-            table.insert(keys, k)
-          end
-          current_entry.key = table.concat(keys, " + ")
-        end
-      end
-      
-      -- Parse description
-      local desc_match = line:match('^desc%s*=%s*"([^"]*)"')
-      if desc_match then
-        current_entry.desc = desc_match
-      end
-      
-      -- Parse run command
-      local run_match = line:match('^run%s*=%s*"(.*)"%s*$')
-      if run_match then
-        current_entry.run = run_match
-      else
-        local run_array = line:match('^run%s*=%s*%[([^%]]*)')
-        if run_array then
-          -- Handle array format - take first command
-          local first_cmd = run_array:match('"([^"]*)"')
-          if first_cmd then
-            current_entry.run = first_cmd
-          end
-        end
-      end
+    end
+    return
+  end
+  
+  -- Otherwise recurse into sub-tables (dict-like)
+  for k, v in pairs(tbl) do
+    if type(v) == "table" then
+      collect_keymap_entries(v, commands)
+    end
+  end
+end
+
+-- Parse TOML keymap file to extract keybindings (uses tinytoml)
+local function parse_keymap_file(file_path)
+  if not tinytoml then return {} end
+  
+  local ok, data = pcall(tinytoml.parse, file_path)
+  if not ok then
+    -- Try loading as string in case file path has issues
+    local file = io.open(file_path, "r")
+    if not file then return {} end
+    local content = file:read("*all")
+    file:close()
+    ok, data = pcall(tinytoml.parse, content, { load_from_string = true })
+    if not ok then
+      return {}
     end
   end
   
-  -- Don't forget the last entry
-  if current_entry.key and current_entry.run then
-    table.insert(commands, current_entry)
-    entry_count = entry_count + 1
-  end
-  
---   debug("Found " .. entry_count .. " commands in " .. file_path)
-  
+  local commands = {}
+  collect_keymap_entries(data, commands)
   return commands
 end
 
