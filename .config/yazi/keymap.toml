@@ -54,5 +54,5 @@ desc = "Paste from macOS clipboard (JXA)"
 
 [[mgr.prepend_keymap]]
 on = ["<F1>"]
-desc = "Command palette (fzf)"
-run = "plugin command-palette"
+desc = "Command palette"
+run = "plugin command-palette-2"
