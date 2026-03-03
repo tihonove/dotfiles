@@ -1751,6 +1751,13 @@ local move_cursor = ya.sync(function(self, delta)
   ui.render()
 end)
 
+local get_page_size = ya.sync(function(self)
+  local area = self._overlay
+  if not area then return 10 end
+  local inner = area:pad(ui.Pad(1, 2, 1, 2))
+  return math.max(1, inner.h - 2)
+end)
+
 -- Get the currently selected command data from sync context (no emission here)
 local get_selected_command = ya.sync(function(self)
   local filtered = self.filtered or {}
@@ -1796,6 +1803,8 @@ local function build_key_candidates()
   cands[#cands + 1] = { on = "<Down>", action = "down" }
   cands[#cands + 1] = { on = "<C-p>", action = "up" }
   cands[#cands + 1] = { on = "<C-n>", action = "down" }
+  cands[#cands + 1] = { on = "<PageUp>", action = "page_up" }
+  cands[#cands + 1] = { on = "<PageDown>", action = "page_down" }
   cands[#cands + 1] = { on = "<C-u>", action = "clear" }
   cands[#cands + 1] = { on = "<Enter>", action = "confirm" }
   cands[#cands + 1] = { on = "<Esc>", action = "quit" }
@@ -1841,6 +1850,10 @@ local function show_modal_palette()
       move_cursor(-1)
     elseif cand.action == "down" then
       move_cursor(1)
+    elseif cand.action == "page_up" then
+      move_cursor(-get_page_size())
+    elseif cand.action == "page_down" then
+      move_cursor(get_page_size())
     elseif cand.action == "confirm" then
       toggle_ui()
       local cmd_string, desc, current_file = get_selected_command()
