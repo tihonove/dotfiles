@@ -1,58 +1,160 @@
 # A TOML linter such as https://taplo.tamasfe.dev/ can use this schema to validate your config.
 # If you encounter any issues, please make an issue at https://github.com/yazi-rs/schemas.
+#
+# Windows Explorer / Nautilus style keybindings:
+#   - All file operations via Ctrl+ shortcuts
+#   - Letter/digit keys trigger type-ahead jump (like Explorer)
+#   - Navigation via arrow keys, Enter, Backspace
 
 "$schema" = "https://yazi-rs.github.io/schemas/keymap.json"
 
-[[mgr.prepend_keymap]]
-on   = "l"
-run  = "plugin smart-enter"
-desc = "Enter the child directory, or open the file"
+[mgr]
 
-# ── Bookmarks ────────────────────────────────────────────────────────────────
+keymap = [
+	# ── Escape / Quit ────────────────────────────────────────────────────────
+	{ on = "<Esc>",       run = "escape",              desc = "Cancel / escape" },
+	{ on = "<C-q>",       run = "quit",                desc = "Quit yazi" },
+	{ on = "<C-w>",       run = "close",               desc = "Close tab, or quit if last" },
+	{ on = "<C-z>",       run = "suspend",             desc = "Suspend" },
+    { on = "<C-y>",       run = "tasks_show",          desc = "Show task manager" },
 
-[[mgr.prepend_keymap]]
-on   = [ "m" ]
-run  = "plugin bookmarks save"
-desc = "Save current position as a bookmark"
+	# ── Navigation ───────────────────────────────────────────────────────────
+	{ on = "<Up>",        run = "arrow prev",          desc = "Previous file" },
+	{ on = "<Down>",      run = "arrow next",          desc = "Next file" },
+	{ on = "<Left>",      run = "leave",               desc = "Parent directory" },
+	{ on = "<Right>",     run = "plugin smart-enter",  desc = "Enter dir / open file" },
+	{ on = "<Enter>",     run = "plugin smart-enter",  desc = "Enter dir / open file" },
+	{ on = "<Backspace>", run = "leave",               desc = "Parent directory" },
+	{ on = "<Home>",      run = "arrow top",           desc = "Go to top" },
+	{ on = "<End>",       run = "arrow bot",           desc = "Go to bottom" },
+	{ on = "<PageUp>",    run = "arrow -100%",         desc = "Page up" },
+	{ on = "<PageDown>",  run = "arrow 100%",          desc = "Page down" },
+	{ on = "<S-PageUp>",  run = "arrow -50%",          desc = "Half page up" },
+	{ on = "<S-PageDown>",run = "arrow 50%",           desc = "Half page down" },
+	{ on = "<A-Left>",    run = "back",                desc = "Go back in history" },
+	{ on = "<A-Right>",   run = "forward",             desc = "Go forward in history" },
+	{ on = "<A-Up>",      run = "leave",               desc = "Parent directory (Nautilus)" },
 
-[[mgr.prepend_keymap]]
-on   = [ "'" ]
-run  = "plugin bookmarks jump"
-desc = "Jump to a bookmark"
+	# ── Selection ────────────────────────────────────────────────────────────
+	{ on = "<Space>",     run = [ "toggle", "arrow 1" ], desc = "Toggle selection" },
+	{ on = "<C-a>",       run = "toggle_all --state=on", desc = "Select all" },
+	{ on = "<C-r>",       run = "toggle_all",          desc = "Invert selection" },
+	{ on = "<S-Up>",      run = [ "toggle", "arrow prev" ], desc = "Select up" },
+	{ on = "<S-Down>",    run = [ "toggle", "arrow next" ], desc = "Select down" },
+	{ on = "<S-Home>",    run = [ "visual_mode", "arrow top" ], desc = "Select to top" },
+	{ on = "<S-End>",     run = [ "visual_mode", "arrow bot" ], desc = "Select to bottom" },
 
-[[mgr.prepend_keymap]]
-on   = [ "b", "d" ]
-run  = "plugin bookmarks delete"
-desc = "Delete a bookmark"
+	# ── Spotting ─────────────────────────────────────────────────────────────
+	{ on = "<A-Enter>",   run = "spot",                desc = "Properties (Alt+Enter)" },
 
-[[mgr.prepend_keymap]]
-on   = [ "b", "D" ]
-run  = "plugin bookmarks delete_all"
-desc = "Delete all bookmarks"
+	# ── Tab switching ────────────────────────────────────────────────────────
+	{ on = "<Tab>",       run = "tab_switch 1 --relative",  desc = "Next tab" },
+	{ on = "<BackTab>",   run = "tab_switch -1 --relative", desc = "Previous tab" },
 
-[[mgr.prepend_keymap]]
-on = [ "y" ]
-run = 'shell -- clippy %s'
-desc = "Copy files via Clippy"
+	# ── File operations (Ctrl+) ─────────────────────────────────────────────
+	{ on = "<C-c>",       run = "yank",                desc = "Copy (yank)" },
+	{ on = "<C-x>",       run = "yank --cut",          desc = "Cut" },
+	{ on = "<C-v>",       run = "paste",               desc = "Paste" },
+	{ on = "<Delete>",    run = "remove",              desc = "Trash selected files" },
+	{ on = "<S-Delete>",  run = "remove --permanently",desc = "Delete permanently" },
+	{ on = "<F2>",        run = "rename --cursor=before_ext", desc = "Rename" },
+	{ on = "<C-n>",       run = "create",              desc = "Create file or directory" },
+	{ on = "<C-o>",       run = "open --interactive",  desc = "Open with..." },
 
-[[mgr.prepend_keymap]]
-on = [ "p" ]
-run = '''
-    shell --confirm -- osascript -l JavaScript -e "
-        ObjC.import('AppKit');
-        ObjC.import('stdlib');
-        var files = $.NSPasteboard.generalPasteboard.propertyListForType('NSFilenamesPboardType');
-        if (files && files.count > 0) {
-            for (var i = 0; i < files.count; i++) {
-                var path = files.objectAtIndex(i).js;
-                var quotedPath = \"\\\"\" + path.replace(/\\\"/g, \"\\\\\\\"\") + \"\\\"\";
-                $.system(\"cp -R \" + quotedPath + \" .\");
-            }
-        }"
-'''
-desc = "Paste from macOS clipboard (JXA)"
+	# ── Search / Find ───────────────────────────────────────────────────────
+	{ on = "<C-f>",       run = "find --smart",        desc = "Find file by name" },
+	{ on = "<F3>",        run = "find_arrow",          desc = "Next match" },
+	{ on = "<S-F3>",      run = "find_arrow --previous", desc = "Previous match" },
+	{ on = "<C-s>",       run = "search --via=fd",     desc = "Search files recursively (fd)" },
+	{ on = "<C-g>",       run = "search --via=rg",     desc = "Search file content (rg)" },
+	{ on = "<C-e>",       run = "escape --search",     desc = "Cancel search" },
 
-[[mgr.prepend_keymap]]
-on = ["<F1>"]
-desc = "Command palette"
-run = "plugin command-palette-2"
+	# ── View / Display ──────────────────────────────────────────────────────
+	{ on = "<C-h>",       run = "hidden toggle",       desc = "Toggle hidden files" },
+	{ on = "<C-l>",       run = "cd --interactive",    desc = "Go to path (address bar)" },
+
+	# ── Tabs ─────────────────────────────────────────────────────────────────
+	{ on = "<C-t>",       run = "tab_create --current",desc = "New tab" },
+	{ on = "<A-1>",       run = "tab_switch 0",        desc = "Switch to tab 1" },
+	{ on = "<A-2>",       run = "tab_switch 1",        desc = "Switch to tab 2" },
+	{ on = "<A-3>",       run = "tab_switch 2",        desc = "Switch to tab 3" },
+	{ on = "<A-4>",       run = "tab_switch 3",        desc = "Switch to tab 4" },
+	{ on = "<A-5>",       run = "tab_switch 4",        desc = "Switch to tab 5" },
+	{ on = "<A-6>",       run = "tab_switch 5",        desc = "Switch to tab 6" },
+	{ on = "<A-7>",       run = "tab_switch 6",        desc = "Switch to tab 7" },
+	{ on = "<A-8>",       run = "tab_switch 7",        desc = "Switch to tab 8" },
+	{ on = "<A-9>",       run = "tab_switch 8",        desc = "Switch to tab 9" },
+	{ on = "<C-PageDown>",run = "tab_switch 1 --relative",  desc = "Next tab" },
+	{ on = "<C-PageUp>",  run = "tab_switch -1 --relative", desc = "Previous tab" },
+
+	# ── Misc ─────────────────────────────────────────────────────────────────
+	{ on = "<F1>",        run = "plugin command-palette-2", desc = "Command palette" },
+	{ on = "<F5>",        run = "shell 'true' --confirm", desc = "Refresh" },
+
+	# ── Type-ahead: letter/digit keys jump to file by prefix ─────────────
+	{ on = "a", run = "plugin type-ahead -- a", desc = "Jump: a" },
+	{ on = "b", run = "plugin type-ahead -- b", desc = "Jump: b" },
+	{ on = "c", run = "plugin type-ahead -- c", desc = "Jump: c" },
+	{ on = "d", run = "plugin type-ahead -- d", desc = "Jump: d" },
+	{ on = "e", run = "plugin type-ahead -- e", desc = "Jump: e" },
+	{ on = "f", run = "plugin type-ahead -- f", desc = "Jump: f" },
+	{ on = "g", run = "plugin type-ahead -- g", desc = "Jump: g" },
+	{ on = "h", run = "plugin type-ahead -- h", desc = "Jump: h" },
+	{ on = "i", run = "plugin type-ahead -- i", desc = "Jump: i" },
+	{ on = "j", run = "plugin type-ahead -- j", desc = "Jump: j" },
+	{ on = "k", run = "plugin type-ahead -- k", desc = "Jump: k" },
+	{ on = "l", run = "plugin type-ahead -- l", desc = "Jump: l" },
+	{ on = "m", run = "plugin type-ahead -- m", desc = "Jump: m" },
+	{ on = "n", run = "plugin type-ahead -- n", desc = "Jump: n" },
+	{ on = "o", run = "plugin type-ahead -- o", desc = "Jump: o" },
+	{ on = "p", run = "plugin type-ahead -- p", desc = "Jump: p" },
+	{ on = "q", run = "plugin type-ahead -- q", desc = "Jump: q" },
+	{ on = "r", run = "plugin type-ahead -- r", desc = "Jump: r" },
+	{ on = "s", run = "plugin type-ahead -- s", desc = "Jump: s" },
+	{ on = "t", run = "plugin type-ahead -- t", desc = "Jump: t" },
+	{ on = "u", run = "plugin type-ahead -- u", desc = "Jump: u" },
+	{ on = "v", run = "plugin type-ahead -- v", desc = "Jump: v" },
+    { on = "w", run = "plugin type-ahead -- w", desc = "Jump: w" },
+	{ on = "x", run = "plugin type-ahead -- x", desc = "Jump: x" },
+	{ on = "y", run = "plugin type-ahead -- y", desc = "Jump: y" },
+	{ on = "z", run = "plugin type-ahead -- z", desc = "Jump: z" },
+	{ on = "A", run = "plugin type-ahead -- A", desc = "Jump: A" },
+	{ on = "B", run = "plugin type-ahead -- B", desc = "Jump: B" },
+	{ on = "C", run = "plugin type-ahead -- C", desc = "Jump: C" },
+	{ on = "D", run = "plugin type-ahead -- D", desc = "Jump: D" },
+	{ on = "E", run = "plugin type-ahead -- E", desc = "Jump: E" },
+	{ on = "F", run = "plugin type-ahead -- F", desc = "Jump: F" },
+	{ on = "G", run = "plugin type-ahead -- G", desc = "Jump: G" },
+	{ on = "H", run = "plugin type-ahead -- H", desc = "Jump: H" },
+	{ on = "I", run = "plugin type-ahead -- I", desc = "Jump: I" },
+	{ on = "J", run = "plugin type-ahead -- J", desc = "Jump: J" },
+	{ on = "K", run = "plugin type-ahead -- K", desc = "Jump: K" },
+	{ on = "L", run = "plugin type-ahead -- L", desc = "Jump: L" },
+	{ on = "M", run = "plugin type-ahead -- M", desc = "Jump: M" },
+	{ on = "N", run = "plugin type-ahead -- N", desc = "Jump: N" },
+	{ on = "O", run = "plugin type-ahead -- O", desc = "Jump: O" },
+	{ on = "P", run = "plugin type-ahead -- P", desc = "Jump: P" },
+	{ on = "Q", run = "plugin type-ahead -- Q", desc = "Jump: Q" },
+	{ on = "R", run = "plugin type-ahead -- R", desc = "Jump: R" },
+	{ on = "S", run = "plugin type-ahead -- S", desc = "Jump: S" },
+	{ on = "T", run = "plugin type-ahead -- T", desc = "Jump: T" },
+	{ on = "U", run = "plugin type-ahead -- U", desc = "Jump: U" },
+	{ on = "V", run = "plugin type-ahead -- V", desc = "Jump: V" },
+	{ on = "W", run = "plugin type-ahead -- W", desc = "Jump: W" },
+	{ on = "X", run = "plugin type-ahead -- X", desc = "Jump: X" },
+	{ on = "Y", run = "plugin type-ahead -- Y", desc = "Jump: Y" },
+	{ on = "Z", run = "plugin type-ahead -- Z", desc = "Jump: Z" },
+	{ on = "0", run = "plugin type-ahead -- 0", desc = "Jump: 0" },
+	{ on = "1", run = "plugin type-ahead -- 1", desc = "Jump: 1" },
+	{ on = "2", run = "plugin type-ahead -- 2", desc = "Jump: 2" },
+	{ on = "3", run = "plugin type-ahead -- 3", desc = "Jump: 3" },
+	{ on = "4", run = "plugin type-ahead -- 4", desc = "Jump: 4" },
+	{ on = "5", run = "plugin type-ahead -- 5", desc = "Jump: 5" },
+	{ on = "6", run = "plugin type-ahead -- 6", desc = "Jump: 6" },
+	{ on = "7", run = "plugin type-ahead -- 7", desc = "Jump: 7" },
+	{ on = "8", run = "plugin type-ahead -- 8", desc = "Jump: 8" },
+	{ on = "9", run = "plugin type-ahead -- 9", desc = "Jump: 9" },
+	{ on = ".", run = "plugin type-ahead -- .", desc = "Jump: ." },
+	{ on = "-", run = "plugin type-ahead -- -", desc = "Jump: -" },
+	{ on = "_", run = "plugin type-ahead -- _", desc = "Jump: _" },
+]
