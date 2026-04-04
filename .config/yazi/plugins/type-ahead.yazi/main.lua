@@ -1,11 +1,22 @@
 --- @sync entry
---- type-ahead.yazi: Windows Explorer-style single-key jump
+--- type-ahead.yazi: prefix-based file jump
 ---
---- Press a letter/digit → jump to first file starting with it.
---- Press the same letter again → cycle to the next match.
---- Press a different letter → jump to the first match for the new letter.
+--- Press a letter/digit → jump to first file starting with that prefix.
+--- Press the same letter again → cycle to the next match for current prefix.
+--- Press a different letter → extend the prefix and jump to first match.
+--- If extended prefix has no match → fall back to the new letter as a fresh prefix.
 
-local state = { last_char = nil, last_idx = nil }
+local state = { prefix = "", last_char = nil, last_idx = nil }
+
+local function find_match(files, n, prefix, start)
+	for offset = 0, n - 1 do
+		local idx = (start + offset) % n
+		if files[idx + 1].name:lower():sub(1, #prefix) == prefix then
+			return idx
+		end
+	end
+	return nil
+end
 
 local function entry(self, job)
 	local ch = job.args[1]
@@ -19,28 +30,28 @@ local function entry(self, job)
 	local lower_ch = ch:lower()
 	local cursor = current.cursor -- 0-based
 
-	-- Determine start position for search
-	local start
+	local new_prefix, start
+
 	if state.last_char == lower_ch and state.last_idx then
-		-- Same char pressed again: start searching from NEXT file after last match
+		-- Same key: cycle to next match keeping current prefix
+		new_prefix = state.prefix
 		start = state.last_idx + 1
 	else
-		-- New char: start from the beginning
+		-- Different key: extend prefix, search from beginning
+		new_prefix = state.prefix .. lower_ch
 		start = 0
 	end
 
-	-- Search from start to end, then wrap around from 0
-	local found = nil
-	for offset = 0, n - 1 do
-		local idx = (start + offset) % n
-		local name = files[idx + 1].name -- files is 1-indexed
-		if name:sub(1, 1):lower() == lower_ch then
-			found = idx
-			break
-		end
+	local found = find_match(files, n, new_prefix, start)
+
+	-- If extended prefix found nothing, fall back to just the new char
+	if not found and state.last_char ~= lower_ch then
+		new_prefix = lower_ch
+		found = find_match(files, n, new_prefix, 0)
 	end
 
 	if found then
+		state.prefix = new_prefix
 		state.last_char = lower_ch
 		state.last_idx = found
 		local move = found - cursor
