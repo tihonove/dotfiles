@@ -238,6 +238,9 @@ if [ -f ~/.bashrc.local ]; then
     source ~/.bashrc.local
 fi
 
+# Use system CA certificates in Node.js (for corporate certs like Nebius)
+export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--use-system-ca"
+
 export STARSHIP_CONFIG="$HOME/.starship.config.toml"
 
 case $(uname -m) in
