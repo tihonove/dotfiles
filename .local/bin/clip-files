@@ -20,7 +20,11 @@ from urllib.parse import quote
 
 
 def _start_portal_transfer(paths):
-    """Register files with XDG Desktop Portal for sandboxed apps (Flatpak)."""
+    """Register files with XDG Desktop Portal for sandboxed apps (Flatpak).
+    
+    Returns (transfer_key, bus) — caller must keep bus alive to prevent GC
+    from closing the D-Bus connection and invalidating the transfer.
+    """
     try:
         import gi
         gi.require_version("Gio", "2.0")
@@ -55,9 +59,9 @@ def _start_portal_transfer(paths):
             GLib.Variant("(saha{sv})", (transfer_key, fds, {})),
             None, Gio.DBusCallFlags.NONE, -1, fd_list, None,
         )
-        return transfer_key
+        return transfer_key, bus
     except Exception:
-        return None
+        return None, None
 
 
 def _uri_encode(path):
@@ -65,8 +69,11 @@ def _uri_encode(path):
     return "file://" + quote(path, safe="/:")
 
 
-def _serve_clipboard(paths, portal_key):
+def _serve_clipboard(paths):
     """Child process: own the X11 clipboard and serve requests."""
+    # Start portal transfer in THIS process so the D-Bus connection stays alive
+    portal_key, _portal_bus = _start_portal_transfer(paths)
+
     gtk = ctypes.CDLL(ctypes.util.find_library("gtk-3"))
     gdk = ctypes.CDLL(ctypes.util.find_library("gdk-3"))
 
@@ -155,9 +162,7 @@ def main():
             print(f"clip-files: {p}: No such file or directory", file=sys.stderr)
             sys.exit(1)
 
-    portal_key = _start_portal_transfer(paths)
-
-    proc = multiprocessing.Process(target=_serve_clipboard, args=(paths, portal_key), daemon=False)
+    proc = multiprocessing.Process(target=_serve_clipboard, args=(paths,), daemon=False)
     proc.start()
 
     n = len(paths)
