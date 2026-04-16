@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Copy files to system clipboard with multiple MIME targets.
+
+Sets x-special/gnome-copied-files, text/uri-list, UTF8_STRING,
+text/plain;charset=utf-8, and application/vnd.portal.filetransfer
+so pasting works in Nautilus, Telegram (Flatpak), Slack, etc.
+
+A background process owns the X11 CLIPBOARD selection and serves
+requests until another app claims it.
+
+Usage: clip-files <file1> [file2] ...
+"""
+import ctypes
+import ctypes.util
+import sys
+import os
+import signal
+import multiprocessing
+from urllib.parse import quote
+
+
+def _start_portal_transfer(paths):
+    """Register files with XDG Desktop Portal for sandboxed apps (Flatpak)."""
+    try:
+        import gi
+        gi.require_version("Gio", "2.0")
+        from gi.repository import Gio, GLib
+
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+        result = bus.call_sync(
+            "org.freedesktop.portal.Documents",
+            "/org/freedesktop/portal/documents",
+            "org.freedesktop.portal.FileTransfer",
+            "StartTransfer",
+            GLib.Variant("(a{sv})", [{"writable": GLib.Variant("b", False),
+                                       "autostop": GLib.Variant("b", True)}]),
+            GLib.VariantType("(s)"),
+            Gio.DBusCallFlags.NONE, -1, None,
+        )
+        transfer_key = result.unpack()[0]
+
+        fds = []
+        fd_list = Gio.UnixFDList.new()
+        for p in paths:
+            fd = os.open(p, os.O_RDONLY)
+            fd_list.append(fd)
+            fds.append(len(fds))
+            os.close(fd)
+
+        bus.call_with_unix_fd_list_sync(
+            "org.freedesktop.portal.Documents",
+            "/org/freedesktop/portal/documents",
+            "org.freedesktop.portal.FileTransfer",
+            "AddFiles",
+            GLib.Variant("(saha{sv})", (transfer_key, fds, {})),
+            None, Gio.DBusCallFlags.NONE, -1, fd_list, None,
+        )
+        return transfer_key
+    except Exception:
+        return None
+
+
+def _uri_encode(path):
+    """Encode path for file:// URI (percent-encode special chars)."""
+    return "file://" + quote(path, safe="/:")
+
+
+def _serve_clipboard(paths, portal_key):
+    """Child process: own the X11 clipboard and serve requests."""
+    gtk = ctypes.CDLL(ctypes.util.find_library("gtk-3"))
+    gdk = ctypes.CDLL(ctypes.util.find_library("gdk-3"))
+
+    gdk.gdk_atom_intern.argtypes = [ctypes.c_char_p, ctypes.c_int]
+    gdk.gdk_atom_intern.restype = ctypes.c_void_p
+    gtk.gtk_init.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    gtk.gtk_init.restype = None
+    gtk.gtk_clipboard_get.argtypes = [ctypes.c_void_p]
+    gtk.gtk_clipboard_get.restype = ctypes.c_void_p
+    gtk.gtk_selection_data_set.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
+    ]
+    gtk.gtk_selection_data_set.restype = None
+    gtk.gtk_main.argtypes = []
+    gtk.gtk_main.restype = None
+    gtk.gtk_main_quit.argtypes = []
+    gtk.gtk_main_quit.restype = None
+
+    class GtkTargetEntry(ctypes.Structure):
+        _fields_ = [("target", ctypes.c_char_p), ("flags", ctypes.c_uint), ("info", ctypes.c_uint)]
+
+    GET_FUNC = ctypes.CFUNCTYPE(
+        None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p,
+    )
+    CLEAR_FUNC = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)
+
+    gtk.gtk_clipboard_set_with_data.argtypes = [
+        ctypes.c_void_p, ctypes.POINTER(GtkTargetEntry), ctypes.c_uint,
+        GET_FUNC, CLEAR_FUNC, ctypes.c_void_p,
+    ]
+    gtk.gtk_clipboard_set_with_data.restype = ctypes.c_int
+
+    gtk.gtk_init(None, None)
+
+    uris = [_uri_encode(p) for p in paths]
+    text_paths = "\n".join(paths).encode("utf-8")
+
+    # Build data map: info_id → (atom_name, data)
+    entries = [
+        (b"x-special/gnome-copied-files", ("copy\n" + "\n".join(uris)).encode("utf-8")),
+        (b"text/uri-list",                 ("\r\n".join(uris) + "\r\n").encode("utf-8")),
+        (b"UTF8_STRING",                   text_paths),
+        (b"text/plain;charset=utf-8",      text_paths),
+        (b"TEXT",                           text_paths),
+        (b"STRING",                         text_paths),
+        (b"COMPOUND_TEXT",                  text_paths),
+    ]
+
+    if portal_key is not None:
+        entries.append((b"application/vnd.portal.filetransfer", portal_key.encode("utf-8")))
+        entries.append((b"application/vnd.portal.files", portal_key.encode("utf-8")))
+
+    n = len(entries)
+    atoms = [gdk.gdk_atom_intern(e[0], 0) for e in entries]
+    data_list = [e[1] for e in entries]
+
+    def _get(clipboard, sel_data, info, user_data):
+        idx = min(info, n - 1)
+        gtk.gtk_selection_data_set(sel_data, atoms[idx], 8, data_list[idx], len(data_list[idx]))
+
+    def _clear(clipboard, user_data):
+        gtk.gtk_main_quit()
+
+    get_cb = GET_FUNC(_get)
+    clear_cb = CLEAR_FUNC(_clear)
+
+    targets_arr = (GtkTargetEntry * n)(
+        *(GtkTargetEntry(entries[i][0], 0, i) for i in range(n))
+    )
+
+    clipboard = gtk.gtk_clipboard_get(gdk.gdk_atom_intern(b"CLIPBOARD", 0))
+    gtk.gtk_clipboard_set_with_data(clipboard, targets_arr, n, get_cb, clear_cb, None)
+
+    signal.signal(signal.SIGTERM, lambda *_: gtk.gtk_main_quit())
+    gtk.gtk_main()
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: clip-files <file1> [file2] ...", file=sys.stderr)
+        sys.exit(1)
+
+    paths = [os.path.abspath(p) for p in sys.argv[1:]]
+    for p in paths:
+        if not os.path.exists(p):
+            print(f"clip-files: {p}: No such file or directory", file=sys.stderr)
+            sys.exit(1)
+
+    portal_key = _start_portal_transfer(paths)
+
+    proc = multiprocessing.Process(target=_serve_clipboard, args=(paths, portal_key), daemon=False)
+    proc.start()
+
+    n = len(paths)
+    names = [os.path.basename(p) for p in paths]
+    if n == 1:
+        print(f"Copied: {names[0]}")
+    else:
+        print(f"Copied {n} files: {', '.join(names[:3])}{'...' if n > 3 else ''}")
+
+    os._exit(0)
+
+
+if __name__ == "__main__":
+    multiprocessing.set_start_method("spawn")
+    main()

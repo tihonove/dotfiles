@@ -52,9 +52,9 @@ keymap = [
 	{ on = "<BackTab>",   run = "tab_switch -1 --relative", desc = "Previous tab" },
 
 	# ── File operations (Ctrl+) ─────────────────────────────────────────────
-	{ on = "<C-c>",       run = "yank",                desc = "Copy (yank)" },
+	{ on = "<C-c>",       run = "plugin copy-files",   desc = "Copy files to system clipboard" },
 	{ on = "<C-x>",       run = "yank --cut",          desc = "Cut" },
-	{ on = "<C-v>",       run = "paste",               desc = "Paste" },
+	{ on = "<C-v>",       run = "plugin paste-files",  desc = "Paste files from system clipboard" },
 	{ on = "<Delete>",    run = "remove",              desc = "Trash selected files" },
 	{ on = "<S-Delete>",  run = "remove --permanently",desc = "Delete permanently" },
 	{ on = "<F2>",        run = "rename --cursor=before_ext", desc = "Rename" },

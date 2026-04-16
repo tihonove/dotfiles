@@ -22,81 +22,101 @@ execute = [
 	{ run = 'printf "\033[1mExecute:\033[0m %s\n\n" "%s1" && read -p "Run? [y/N] " c && [[ $c == [yY] ]] && "%s1"', block = true, desc = "Execute (with confirmation)", for = "unix" },
 ]
 
+# ── Clipboard operations (appear in "Open with…" menu) ─────────────────────
+copy_path = [
+	{ run = 'printf "%s" "$1" | xsel -bi',              desc = "📋 Copy full path",        for = "linux" },
+	{ run = 'printf "%s" "$1" | pbcopy',                desc = "📋 Copy full path",        for = "macos" },
+]
+copy_name = [
+	{ run = 'printf "%s" "$(basename "$1")" | xsel -bi', desc = "📋 Copy filename",        for = "linux" },
+	{ run = 'printf "%s" "$(basename "$1")" | pbcopy',   desc = "📋 Copy filename",        for = "macos" },
+]
+copy_dir = [
+	{ run = 'printf "%s" "$(dirname "$1")" | xsel -bi',  desc = "📋 Copy directory path",  for = "linux" },
+	{ run = 'printf "%s" "$(dirname "$1")" | pbcopy',    desc = "📋 Copy directory path",  for = "macos" },
+]
+copy_to_clipboard = [
+	{ run = 'clip-files "$@"',                                           desc = "📋 Copy file to clipboard", for = "linux" },
+	{ run = '''osascript -e 'set the clipboard to (POSIX file "'"$1"'")'  ''', desc = "📋 Copy file to clipboard", for = "macos" },
+]
+
 # ── Open rules ───────────────────────────────────────────────────────────────
 
 [open]
 rules = [
+	# Clipboard ops appended to every rule: copy_path, copy_name, copy_dir, copy_to_clipboard
+
 	# Folders — open as project in VS Code
-	{ url = "*/", use = [ "edit", "open", "reveal" ] },
+	{ url = "*/", use = [ "edit", "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
 
 	# ── Executable binaries ──
-	{ mime = "application/x-executable",     use = [ "execute", "open", "reveal" ] },
-	{ mime = "application/x-mach-binary",    use = [ "execute", "open", "reveal" ] },
-	{ mime = "application/x-pie-executable", use = [ "execute", "open", "reveal" ] },
-	{ mime = "application/x-elf",             use = [ "execute", "open", "reveal" ] },
+	{ mime = "application/x-executable",     use = [ "execute", "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-mach-binary",    use = [ "execute", "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-pie-executable", use = [ "execute", "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-elf",            use = [ "execute", "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
 
 	# ── Text / source code (text/* mime) ──
-	{ mime = "text/*", use = [ "edit", "open" ] },
+	{ mime = "text/*", use = [ "edit", "open", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
 
 	# ── Structured data & scripts detected as application/* ──
-	{ mime = "application/json",             use = [ "edit" ] },
-	{ mime = "application/x-ndjson",         use = [ "edit" ] },
-	{ mime = "application/javascript",       use = [ "edit" ] },
-	{ mime = "application/typescript",       use = [ "edit" ] },
-	{ mime = "application/x-shellscript",    use = [ "execute", "edit" ] },
-	{ mime = "application/x-sh",             use = [ "execute", "edit" ] },
-	{ mime = "application/xml",              use = [ "edit" ] },
-	{ mime = "application/x-yaml",           use = [ "edit" ] },
-	{ mime = "application/toml",             use = [ "edit" ] },
-	{ mime = "application/x-ruby",           use = [ "execute", "edit" ] },
-	{ mime = "application/x-perl",           use = [ "execute", "edit" ] },
-	{ mime = "application/x-python",         use = [ "execute", "edit" ] },
-	{ mime = "application/x-lua",            use = [ "execute", "edit" ] },
-	{ mime = "application/x-empty",          use = [ "edit" ] },
-	{ mime = "inode/x-empty",                use = [ "edit" ] },
+	{ mime = "application/json",             use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-ndjson",         use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/javascript",       use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/typescript",       use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-shellscript",    use = [ "execute", "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-sh",             use = [ "execute", "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/xml",              use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-yaml",           use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/toml",             use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-ruby",           use = [ "execute", "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-perl",           use = [ "execute", "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-python",         use = [ "execute", "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-lua",            use = [ "execute", "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-empty",          use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "inode/x-empty",                use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
 
 	# ── Common extensions that may lack a mime ──
-	{ url = "*.env",         use = [ "edit" ] },
-	{ url = "*.env.*",       use = [ "edit" ] },
-	{ url = ".editorconfig", use = [ "edit" ] },
-	{ url = ".gitignore",    use = [ "edit" ] },
-	{ url = "*.lock",        use = [ "edit" ] },
-	{ url = "*.log",         use = [ "edit" ] },
-	{ url = "*.sql",         use = [ "edit" ] },
-	{ url = "*.graphql",     use = [ "edit" ] },
-	{ url = "*.gql",         use = [ "edit" ] },
-	{ url = "*.proto",       use = [ "edit" ] },
-	{ url = "*.tf",          use = [ "edit" ] },
-	{ url = "*.hcl",         use = [ "edit" ] },
-	{ url = "Dockerfile*",   use = [ "edit" ] },
-	{ url = "Makefile",      use = [ "edit" ] },
-	{ url = "Justfile",      use = [ "edit" ] },
-	{ url = "*.mk",          use = [ "edit" ] },
+	{ url = "*.env",         use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = "*.env.*",       use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = ".editorconfig", use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = ".gitignore",    use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = "*.lock",        use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = "*.log",         use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = "*.sql",         use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = "*.graphql",     use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = "*.gql",         use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = "*.proto",       use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = "*.tf",          use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = "*.hcl",         use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = "Dockerfile*",   use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = "Makefile",      use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = "Justfile",      use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = "*.mk",          use = [ "edit", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
 
 	# ── Media ──
-	{ mime = "image/*", use = [ "open", "reveal" ] },
-	{ mime = "video/*", use = [ "open", "reveal" ] },
-	{ mime = "audio/*", use = [ "open", "reveal" ] },
+	{ mime = "image/*", use = [ "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "video/*", use = [ "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "audio/*", use = [ "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
 
 	# ── Documents ──
-	{ mime = "application/pdf",                                          use = [ "open", "reveal" ] },
-	{ mime = "application/vnd.openxmlformats-officedocument.*",          use = [ "open", "reveal" ] },
-	{ mime = "application/vnd.ms-excel",                                 use = [ "open", "reveal" ] },
-	{ mime = "application/msword",                                       use = [ "open", "reveal" ] },
-	{ mime = "application/vnd.oasis.opendocument.*",                     use = [ "open", "reveal" ] },
+	{ mime = "application/pdf",                                          use = [ "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/vnd.openxmlformats-officedocument.*",          use = [ "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/vnd.ms-excel",                                 use = [ "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/msword",                                       use = [ "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/vnd.oasis.opendocument.*",                     use = [ "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
 
 	# ── Archives ──
-	{ mime = "application/zip",              use = [ "extract", "list", "reveal" ] },
-	{ mime = "application/x-tar",            use = [ "extract", "list", "reveal" ] },
-	{ mime = "application/x-bzip2",          use = [ "extract", "list", "reveal" ] },
-	{ mime = "application/x-7z-compressed",  use = [ "extract", "list", "reveal" ] },
-	{ mime = "application/x-rar",            use = [ "extract", "list", "reveal" ] },
-	{ mime = "application/gzip",             use = [ "extract", "list", "reveal" ] },
-	{ mime = "application/x-xz",            use = [ "extract", "list", "reveal" ] },
-	{ mime = "application/zstd",             use = [ "extract", "list", "reveal" ] },
+	{ mime = "application/zip",              use = [ "extract", "list", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-tar",            use = [ "extract", "list", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-bzip2",          use = [ "extract", "list", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-7z-compressed",  use = [ "extract", "list", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-rar",            use = [ "extract", "list", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/gzip",             use = [ "extract", "list", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/x-xz",            use = [ "extract", "list", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ mime = "application/zstd",             use = [ "extract", "list", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
 
 	# ── Fallback — всё остальное через системный open ──
-	{ url = "*", use = [ "open", "reveal" ] },
+	{ url = "*", use = [ "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
 ]
 
 [manager]

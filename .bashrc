@@ -2,6 +2,8 @@
 
 export PATH=$PATH
 
+. "$HOME/.cargo/env" 2>/dev/null
+
 # If not running interactively, don't do anything
 case $- in
     *i*) ;;
