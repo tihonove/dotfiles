@@ -12,6 +12,7 @@ source "$HOME/.zinit.plugins.sh"
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 
+export PATH="$HOME/.dotfiles.scripts:$PATH"
 . "$HOME/.local/bin/env"
 
 # The next line updates PATH for UI Infra Ibazel CLI.

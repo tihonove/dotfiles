@@ -1,6 +1,7 @@
 [[ $- == *i* ]] && source -- ${HOME}/.ble-nightly/ble.sh --attach=none
 
 export PATH=$PATH
+export PATH=$PATH:~/.dotfiles.scripts
 
 . "$HOME/.cargo/env" 2>/dev/null
 
