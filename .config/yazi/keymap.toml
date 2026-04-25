@@ -46,6 +46,8 @@ keymap = [
 
 	# ── Spotting ─────────────────────────────────────────────────────────────
 	{ on = "<A-Enter>",   run = "spot",                desc = "Properties (Alt+Enter)" },
+	{ on = "<F10>",       run = "open --interactive",  desc = "Context menu (F10)" },
+	{ on = "<S-F10>",     run = "open --interactive",  desc = "Context menu (Shift+F10)" },
 
 	# ── Tab switching ────────────────────────────────────────────────────────
 	{ on = "<Tab>",       run = "tab_switch 1 --relative",  desc = "Next tab" },

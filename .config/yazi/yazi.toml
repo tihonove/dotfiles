@@ -7,9 +7,11 @@ edit = [
 	{ run = 'code %s', orphan = true, desc = "Open in VS Code" },
 ]
 open = [
+	{ run = 'xdg-open %s', orphan = true, desc = "Open (system default)", for = "linux" },
 	{ run = 'open %s', orphan = true, desc = "Open (system default)", for = "macos" },
 ]
 reveal = [
+	{ run = 'xdg-open "$(dirname %s)"', orphan = true, desc = "Reveal in file manager", for = "linux" },
 	{ run = 'open -R %s', orphan = true, desc = "Reveal in Finder", for = "macos" },
 ]
 extract = [
