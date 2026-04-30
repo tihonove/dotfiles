@@ -237,9 +237,6 @@ update-dotfiles () {
   bash -c "$(curl -fsSL https://gist.githubusercontent.com/tihonove/972c8b69f706b33cc76e967221136e8f/raw/install.sh)"
 }
 
-if [ -f ~/.bashrc.local ]; then
-    source ~/.bashrc.local
-fi
 
 # Use system CA certificates in Node.js (for corporate certs like Nebius)
 export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--use-system-ca"
@@ -262,3 +259,7 @@ eval "$($STARSHIP init bash)"
 
 [[ ! ${BLE_VERSION-} ]] || ble-attach
 [ -f ~/.fzf.bash ] && source ~/.fzf.bash
+
+if [ -f ~/.bashrc.local ]; then
+    source ~/.bashrc.local
+fi

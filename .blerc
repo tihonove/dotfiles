@@ -80,3 +80,9 @@ ble-face -s cmdinfo_cd_cdpath       fg=blue
 ble-face -s vbell                   reverse
 ble-face -s vbell_flash             reverse
 ble-face -s vbell_erase             bg=238
+
+# Keep Enter executing the command even when ble.sh enters multiline mode.
+ble-bind -m emacs -f 'C-m' accept-line
+ble-bind -m emacs -f 'RET' accept-line
+ble-bind -m vi_imap -f 'C-m' accept-line
+ble-bind -m vi_imap -f 'RET' accept-line
