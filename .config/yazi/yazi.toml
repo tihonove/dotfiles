@@ -8,11 +8,9 @@ edit = [
 ]
 open = [
 	{ run = 'xdg-open %s', orphan = true, desc = "Open (system default)", for = "linux" },
-	{ run = 'open %s', orphan = true, desc = "Open (system default)", for = "macos" },
 ]
 reveal = [
 	{ run = 'xdg-open "$(dirname %s)"', orphan = true, desc = "Reveal in file manager", for = "linux" },
-	{ run = 'open -R %s', orphan = true, desc = "Reveal in Finder", for = "macos" },
 ]
 extract = [
 	{ run = 'mkdir -p "${1%.*}" && ouch decompress "$1" --dir "${1%.*}"', desc = "Extract to subdirectory", for = "unix" },
@@ -27,19 +25,15 @@ execute = [
 # ── Clipboard operations (appear in "Open with…" menu) ─────────────────────
 copy_path = [
 	{ run = 'printf "%s" "$1" | xsel -bi',              desc = "📋 Copy full path",        for = "linux" },
-	{ run = 'printf "%s" "$1" | pbcopy',                desc = "📋 Copy full path",        for = "macos" },
 ]
 copy_name = [
 	{ run = 'printf "%s" "$(basename "$1")" | xsel -bi', desc = "📋 Copy filename",        for = "linux" },
-	{ run = 'printf "%s" "$(basename "$1")" | pbcopy',   desc = "📋 Copy filename",        for = "macos" },
 ]
 copy_dir = [
 	{ run = 'printf "%s" "$(dirname "$1")" | xsel -bi',  desc = "📋 Copy directory path",  for = "linux" },
-	{ run = 'printf "%s" "$(dirname "$1")" | pbcopy',    desc = "📋 Copy directory path",  for = "macos" },
 ]
 copy_to_clipboard = [
 	{ run = 'clip-files "$@"',                                           desc = "📋 Copy file to clipboard", for = "linux" },
-	{ run = '''osascript -e 'set the clipboard to (POSIX file "'"$1"'")'  ''', desc = "📋 Copy file to clipboard", for = "macos" },
 ]
 
 # ── Open rules ───────────────────────────────────────────────────────────────
