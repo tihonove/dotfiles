@@ -258,7 +258,7 @@ esac
 eval "$($STARSHIP init bash)"
 
 [[ ! ${BLE_VERSION-} ]] || ble-attach
-[ -f ~/.fzf.bash ] && source ~/.fzf.bash
+command -v fzf >/dev/null && eval "$(fzf --bash)"
 
 if [ -f ~/.bashrc.local ]; then
     source ~/.bashrc.local

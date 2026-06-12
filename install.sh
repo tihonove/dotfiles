@@ -111,7 +111,7 @@ for item in "$DOTFILES_DIR"/.* "$DOTFILES_DIR"/*; do
     
     # Пропускаем специальные файлы и каталоги
     case "$basename" in
-        "." | ".." | ".git" | ".vscode" | "install.sh" | ".config" | ".fzf" | ".local")
+        "." | ".." | ".git" | ".vscode" | "install.sh" | "update-vendored.sh" | ".config" | ".local")
             continue
             ;;
     esac
@@ -137,8 +137,8 @@ echo "Установка ble.sh..."
 bash .ble-nightly/ble.sh --install ~/.local/share
 echo "✅ Установка ble.sh завершена!"
 
-echo "Установка fzf..."
-bash "$DOTFILES_DIR/.fzf/install" --key-bindings --completion --update-rc
+echo "Установка fzf (и обновление вендоренных зависимостей)..."
+bash "$DOTFILES_DIR/update-vendored.sh"
 echo "✅ Установка fzf завершена!"
 
 echo ""
