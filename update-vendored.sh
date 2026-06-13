@@ -3,6 +3,7 @@
 # Обновление вендоренных зависимостей до последних релизов:
 #   - catppuccin/tmux — копия кладётся в .tmux_plugins/catppuccin (закоммитить вручную)
 #   - fzf — готовый бинарник скачивается в ~/.local/bin
+#   - vexx — nightly-бинарник скачивается в .dotfiles.scripts (в git не хранится, см. .gitignore)
 
 set -e
 
@@ -75,8 +76,33 @@ update_fzf() {
     echo "✅ fzf обновлён: $("$HOME/.local/bin/fzf" --version)"
 }
 
+update_vexx() {
+    echo "Обновление vexx..."
+
+    local asset
+    case $(uname -m) in
+        x86_64) asset="vexx-linux-x64" ;;
+        *)
+            echo "⚠️  nightly-бинарник vexx есть только под x86_64, пропускаю (архитектура: $(uname -m))" >&2
+            return 0
+            ;;
+    esac
+
+    local tmp
+    tmp=$(mktemp -d)
+    trap "rm -rf '$tmp'" RETURN
+
+    curl -fsSL -o "$tmp/vexx" \
+        "https://github.com/tihonove/vexx/releases/download/nightly/$asset"
+
+    install -m 755 "$tmp/vexx" "$DOTFILES_DIR/.dotfiles.scripts/vexx"
+
+    echo "✅ vexx (nightly) обновлён: $DOTFILES_DIR/.dotfiles.scripts/vexx"
+}
+
 update_catppuccin
 update_fzf
+update_vexx
 
 echo ""
 echo "✅ Все вендоренные зависимости обновлены!"

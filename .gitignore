@@ -1,0 +1,2 @@
+# Скачивается при установке через update-vendored.sh (nightly-бинарник vexx), в git не храним
+/.dotfiles.scripts/vexx
