@@ -3,6 +3,14 @@
 export PATH=$PATH
 export PATH=$PATH:~/.dotfiles.scripts
 
+# Debian's ~/.profile adds ~/.local/bin to PATH only AFTER sourcing ~/.bashrc,
+# so the fzf key-binding setup below would miss fzf (installed in ~/.local/bin)
+# on a fresh login and C-r would fall back to ble.sh's built-in isearch.
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
+
 . "$HOME/.cargo/env" 2>/dev/null
 
 # If not running interactively, don't do anything
