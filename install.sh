@@ -111,7 +111,7 @@ for item in "$DOTFILES_DIR"/.* "$DOTFILES_DIR"/*; do
     
     # Пропускаем специальные файлы и каталоги
     case "$basename" in
-        "." | ".." | ".git" | ".vscode" | "install.sh" | "update-vendored.sh" | ".config" | ".local")
+        "." | ".." | ".git" | ".vscode" | "install.sh" | "update-vendored.sh" | ".config" | ".local" | ".gitignore")
             continue
             ;;
     esac
