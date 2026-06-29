@@ -12,6 +12,9 @@ open = [
 reveal = [
 	{ run = 'xdg-open "$(dirname %s)"', orphan = true, desc = "Reveal in file manager", for = "linux" },
 ]
+open_terminal = [
+	{ run = 'if [ -n "$TMUX" ]; then tmux display-popup -d "$1" -E "$SHELL"; else kitty @ --to unix:/tmp/kitty launch --type=tab --cwd="$1"; fi', block = true, desc = "Open in terminal", for = "linux" },
+]
 extract = [
 	{ run = 'mkdir -p "${1%.*}" && ouch decompress "$1" --dir "${1%.*}"', desc = "Extract to subdirectory", for = "unix" },
 ]
@@ -43,7 +46,7 @@ rules = [
 	# Clipboard ops appended to every rule: copy_path, copy_name, copy_dir, copy_to_clipboard
 
 	# Folders — open as project in VS Code
-	{ url = "*/", use = [ "edit", "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
+	{ url = "*/", use = [ "edit", "open", "reveal", "open_terminal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
 
 	# ── Executable binaries ──
 	{ mime = "application/x-executable",     use = [ "execute", "open", "reveal", "copy_path", "copy_name", "copy_dir", "copy_to_clipboard" ] },
