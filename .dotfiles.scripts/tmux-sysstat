@@ -43,10 +43,17 @@ print_module() {
 
 cpu_usage() {
     local state="${TMPDIR:-/tmp}/.tmux-sysstat-cpu.$(id -u)"
-    # Первая строка /proc/stat: cpu  user nice system idle iowait irq softirq ...
-    read -r _ user nice system idle iowait irq softirq _ < /proc/stat
+    # Первая строка /proc/stat:
+    #   cpu  user nice system idle iowait irq softirq steal guest guest_nice
+    # steal — время, «украденное» гипервизором; на виртуалках значимо, поэтому
+    # его ОБЯЗАТЕЛЬНО учитывать в total, иначе процент CPU на VM врёт.
+    # guest/guest_nice уже включены в user/nice, их не суммируем.
+    local f
+    read -ra f < /proc/stat
+    local user=${f[1]} nice=${f[2]} system=${f[3]} idle=${f[4]}
+    local iowait=${f[5]:-0} irq=${f[6]:-0} softirq=${f[7]:-0} steal=${f[8]:-0}
     local idle_all=$((idle + iowait))
-    local total=$((user + nice + system + idle + iowait + irq + softirq))
+    local total=$((user + nice + system + idle + iowait + irq + softirq + steal))
 
     local prev_idle=0 prev_total=0
     if [[ -r "$state" ]]; then
