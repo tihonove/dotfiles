@@ -2,13 +2,44 @@
 # Выводит загрузку CPU или использование памяти для статус-бара tmux.
 # Linux-only: читает /proc/stat и /proc/meminfo, без внешних зависимостей.
 #
-#   tmux-sysstat cpu   →  "12%"   (загрузка CPU с прошлого вызова)
-#   tmux-sysstat mem   →  "34%"   (used / total памяти)
+# Печатает готовый powerline-модуль для status-right (шапка + иконка + значение),
+# целиком окрашенный по порогу. Вставляется напрямую как #(...) в status-right.
+#
+#   tmux-sysstat cpu   →  "#[fg=зел]#[fg=txt,bg=зел]  12% "   (CPU с прошлого вызова)
+#   tmux-sysstat mem   →  "#[fg=зел]#[fg=txt,bg=зел]  34% "   (used / total памяти)
+#
+# Цвет фона по порогам (inline #[…] tmux в выводе #() превращает в SGR-escape):
+#   CPU:    <30 зелёный, 30–70 жёлтый, ≥70 красный
+#   память: <50 зелёный, 50–75 жёлтый, ≥75 красный
 #
 # CPU считается как дельта между двумя снимками /proc/stat, чтобы не блокировать
 # отрисовку статус-бара sleep'ом. Предыдущий снимок храним во временном файле.
 
 set -euo pipefail
+
+# Тёмные насыщенные оттенки (палитра catppuccin Latte) — под светлый текст.
+readonly THM_GREEN="#40a02b"
+readonly THM_YELLOW="#df8e1d"
+readonly THM_RED="#d20f39"
+readonly THM_TEXT="#cdd6f4"    # светлый текст поверх цветного фона
+
+readonly CAP=$''        # левая скруглённая powerline-шапка (U+E0B6)
+readonly ICON_CPU=$''   # микрочип (U+F2DB)
+readonly ICON_MEM=$''   # планка памяти (U+EFC5)
+
+# print_module <pct> <порог_жёлтого> <порог_красного> <иконка>
+# Печатает весь модуль одним цветом порога: скруглённая шапка + иконка + значение.
+# Шапка идёт без bg — наследует фон предыдущего модуля (powerline-переход).
+print_module() {
+    local pct=$1 warn=$2 crit=$3 icon=$4 bg
+    if   (( pct >= crit )); then bg=$THM_RED
+    elif (( pct >= warn )); then bg=$THM_YELLOW
+    else                         bg=$THM_GREEN
+    fi
+    # %3d — фикс. ширина 3 знака (0..100), чтобы блок не менял ширину на 9→10→100.
+    printf '#[fg=%s]%s#[fg=%s,bg=%s] %s %3d%% \n' \
+        "$bg" "$CAP" "$THM_TEXT" "$bg" "$icon" "$pct"
+}
 
 cpu_usage() {
     local state="${TMPDIR:-/tmp}/.tmux-sysstat-cpu.$(id -u)"
@@ -26,10 +57,10 @@ cpu_usage() {
     local d_total=$((total - prev_total))
     local d_idle=$((idle_all - prev_idle))
     if (( d_total <= 0 )); then
-        printf '0%%\n'
+        print_module 0 30 70 "$ICON_CPU"
         return
     fi
-    printf '%d%%\n' $(( (100 * (d_total - d_idle) + d_total / 2) / d_total ))
+    print_module $(( (100 * (d_total - d_idle) + d_total / 2) / d_total )) 30 70 "$ICON_CPU"
 }
 
 mem_usage() {
@@ -37,10 +68,10 @@ mem_usage() {
     total=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)
     avail=$(awk '/^MemAvailable:/{print $2}' /proc/meminfo)
     if [[ -z "$total" || "$total" -eq 0 ]]; then
-        printf '0%%\n'
+        print_module 0 50 75 "$ICON_MEM"
         return
     fi
-    printf '%d%%\n' $(( (100 * (total - avail) + total / 2) / total ))
+    print_module $(( (100 * (total - avail) + total / 2) / total )) 50 75 "$ICON_MEM"
 }
 
 case "${1:-}" in
