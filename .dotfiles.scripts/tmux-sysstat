@@ -1,0 +1,50 @@
+#!/bin/bash
+# Выводит загрузку CPU или использование памяти для статус-бара tmux.
+# Linux-only: читает /proc/stat и /proc/meminfo, без внешних зависимостей.
+#
+#   tmux-sysstat cpu   →  "12%"   (загрузка CPU с прошлого вызова)
+#   tmux-sysstat mem   →  "34%"   (used / total памяти)
+#
+# CPU считается как дельта между двумя снимками /proc/stat, чтобы не блокировать
+# отрисовку статус-бара sleep'ом. Предыдущий снимок храним во временном файле.
+
+set -euo pipefail
+
+cpu_usage() {
+    local state="${TMPDIR:-/tmp}/.tmux-sysstat-cpu.$(id -u)"
+    # Первая строка /proc/stat: cpu  user nice system idle iowait irq softirq ...
+    read -r _ user nice system idle iowait irq softirq _ < /proc/stat
+    local idle_all=$((idle + iowait))
+    local total=$((user + nice + system + idle + iowait + irq + softirq))
+
+    local prev_idle=0 prev_total=0
+    if [[ -r "$state" ]]; then
+        read -r prev_idle prev_total < "$state" || true
+    fi
+    printf '%s %s\n' "$idle_all" "$total" > "$state"
+
+    local d_total=$((total - prev_total))
+    local d_idle=$((idle_all - prev_idle))
+    if (( d_total <= 0 )); then
+        printf '0%%\n'
+        return
+    fi
+    printf '%d%%\n' $(( (100 * (d_total - d_idle) + d_total / 2) / d_total ))
+}
+
+mem_usage() {
+    local total avail
+    total=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)
+    avail=$(awk '/^MemAvailable:/{print $2}' /proc/meminfo)
+    if [[ -z "$total" || "$total" -eq 0 ]]; then
+        printf '0%%\n'
+        return
+    fi
+    printf '%d%%\n' $(( (100 * (total - avail) + total / 2) / total ))
+}
+
+case "${1:-}" in
+    cpu) cpu_usage ;;
+    mem) mem_usage ;;
+    *) echo "usage: $(basename "$0") {cpu|mem}" >&2; exit 2 ;;
+esac
