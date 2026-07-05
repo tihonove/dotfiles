@@ -1,0 +1,47 @@
+{
+  "enabledPlugins": {
+    "warp@claude-code-warp": true,
+    "gopls-lsp@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-code-warp": {
+      "source": {
+        "source": "github",
+        "repo": "warpdotdev/claude-code-warp"
+      }
+    }
+  },
+  "theme": "auto",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(sed *)",
+      "Bash(awk *)",
+      "Bash(mv *)",
+      "Bash(cp *)",
+      "Bash(mkdir *)",
+      "Bash(touch *)",
+      "Bash(tee *)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(find *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(perl *)",
+      "Bash(npx vitest *)",
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(node -e ' *)"
+    ]
+  }
+}

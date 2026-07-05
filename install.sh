@@ -103,6 +103,41 @@ link_config_files() {
     done
 }
 
+# .claude-shared линкуется ПОФАЙЛОВО в ~/.claude (не целиком!):
+# в ~/.claude живут креды/история/сессии/кэш — их в git-репу тянуть нельзя,
+# поэтому симлинкуем только шаримые файлы (settings.json и т.п.), а сам
+# каталог ~/.claude остаётся обычным, куда Claude пишет своё рантайм-состояние.
+link_claude_shared() {
+    local source_dir="$DOTFILES_DIR/.claude-shared"
+    local target_dir="$HOME_DIR/.claude"
+
+    if [[ ! -d "$source_dir" ]]; then
+        return 0
+    fi
+
+    echo "Обрабатываю каталог .claude-shared..."
+
+    if [[ ! -d "$target_dir" ]]; then
+        echo "  Создаю каталог: $target_dir"
+        mkdir -p "$target_dir"
+    fi
+
+    find "$source_dir" -type f | while read -r item; do
+        local rel_path="${item#$source_dir/}"
+        local target_item="$target_dir/$rel_path"
+        local target_subdir="$(dirname "$target_item")"
+
+        if [[ ! -d "$target_subdir" ]]; then
+            echo "  Создаю каталог: $target_subdir"
+            mkdir -p "$target_subdir"
+        fi
+
+        backup_if_exists "$target_item"
+        echo "  Линкую файл: .claude/$rel_path"
+        ln -sf "$item" "$target_item"
+    done
+}
+
 # Обрабатываем файлы в корне dotfiles
 echo "Обрабатываю файлы в корне dotfiles..."
 for item in "$DOTFILES_DIR"/.* "$DOTFILES_DIR"/*; do
@@ -111,7 +146,7 @@ for item in "$DOTFILES_DIR"/.* "$DOTFILES_DIR"/*; do
     
     # Пропускаем специальные файлы и каталоги
     case "$basename" in
-        "." | ".." | ".git" | ".vscode" | "install.sh" | "update-vendored.sh" | ".config" | ".local" | ".gitignore")
+        "." | ".." | ".git" | ".vscode" | "install.sh" | "update-vendored.sh" | ".config" | ".local" | ".gitignore" | ".claude" | ".claude-shared")
             continue
             ;;
     esac
@@ -132,6 +167,9 @@ done
 
 # Обрабатываем каталог .config отдельно
 link_config_files
+
+# Обрабатываем .claude-shared отдельно (пофайлово в ~/.claude)
+link_claude_shared
 
 echo "Установка ble.sh..."
 bash .ble-nightly/ble.sh --install ~/.local/share
