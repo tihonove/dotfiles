@@ -1,0 +1,1 @@
+/home/tihonove/.dotfiles/.claude-shared/skills/system-setup/SKILL.md
