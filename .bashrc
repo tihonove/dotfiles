@@ -11,8 +11,6 @@ case ":$PATH:" in
     *) export PATH="$HOME/.local/bin:$PATH" ;;
 esac
 
-. "$HOME/.cargo/env" 2>/dev/null
-
 # If not running interactively, don't do anything
 case $- in
     *i*) ;;
@@ -126,8 +124,6 @@ if ! shopt -oq posix; then
     . /etc/bash_completion
   fi
 fi
-___MY_VMOPTIONS_SHELL_FILE="${HOME}/.jetbrains.vmoptions.sh"; if [ -f "${___MY_VMOPTIONS_SHELL_FILE}" ]; then . "${___MY_VMOPTIONS_SHELL_FILE}"; fi
-
 gfh() {
   # Проверяем, передали ли имя ветки
   if [ -z "$1" ]; then
