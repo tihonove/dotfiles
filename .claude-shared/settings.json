@@ -1,17 +1,4 @@
 {
-  "enabledPlugins": {
-    "warp@claude-code-warp": true,
-    "gopls-lsp@claude-plugins-official": true
-  },
-  "extraKnownMarketplaces": {
-    "claude-code-warp": {
-      "source": {
-        "source": "github",
-        "repo": "warpdotdev/claude-code-warp"
-      }
-    }
-  },
-  "theme": "auto",
   "permissions": {
     "allow": [
       "Read",
@@ -43,5 +30,19 @@
       "Bash(npx tsc *)",
       "Bash(node -e ' *)"
     ]
-  }
+  },
+  "enabledPlugins": {
+    "warp@claude-code-warp": true,
+    "gopls-lsp@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-code-warp": {
+      "source": {
+        "source": "github",
+        "repo": "warpdotdev/claude-code-warp"
+      }
+    }
+  },
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "auto"
 }
