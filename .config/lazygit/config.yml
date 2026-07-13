@@ -1,0 +1,5 @@
+# vexx как редактор в lazygit (TUI-редактор — lazygit сам приостанавливается на время правки)
+os:
+  edit: 'vexx {{filename}}'
+  editAtLine: 'vexx {{filename}}'
+  editAtLineAndWait: 'vexx {{filename}}'

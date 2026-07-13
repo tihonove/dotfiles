@@ -28,6 +28,7 @@
 	name = Eugene Tihonov
 [core]
 	excludesfile = ~/.gitignore
+	editor = vexx
 [init]
 	defaultBranch = main
 [merge]

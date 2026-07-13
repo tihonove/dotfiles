@@ -11,6 +11,10 @@ case ":$PATH:" in
     *) export PATH="$HOME/.local/bin:$PATH" ;;
 esac
 
+# vexx — редактор по умолчанию (git, claude, lazygit наследуют отсюда)
+export EDITOR=vexx
+export VISUAL=vexx
+
 # If not running interactively, don't do anything
 case $- in
     *i*) ;;
