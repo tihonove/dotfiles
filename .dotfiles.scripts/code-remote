@@ -1,0 +1,85 @@
+#!/bin/bash
+# Открывает файл / папку / workspace в ЛОКАЛЬНОМ VSCode из удалённой SSH-сессии.
+#
+# Механизм: kitten ssh при подключении прокидывает на удалённую сторону
+# remote-control-сокет kitty и выставляет $KITTY_LISTEN_ON. Поэтому
+# `kitty @ launch`, выполненный НА СЕРВЕРЕ, запускает программу на ЛОКАЛЬНОЙ
+# машине. Мы запускаем локальный `code --remote ssh-remote+<host> <путь>`, и
+# VSCode через Remote-SSH подключается обратно к тому же хосту и показывает файл,
+# физически лежащий на сервере.
+#
+#   code-remote path/to/file.ts          → открыть файл (переиспользуя окно)
+#   code-remote path/to/file.ts 42        → открыть файл на строке 42
+#   code-remote path/to/file.ts:42        → то же самое (форма file:line)
+#   code-remote path/to/dir               → открыть папку
+#   code-remote path/to/proj.code-workspace → открыть workspace
+#
+# Режимы:
+#   • удалённо ($SSH_CONNECTION + $KITTY_LISTEN_ON) → через kitty @ launch на локаль;
+#   • удалённо без $KITTY_LISTEN_ON → ошибка (подключайся через `kitten ssh`);
+#   • локально → просто `code` напрямую (та же команда безопасна и на своей машине).
+#
+# Хост для Remote-SSH: $CODE_REMOTE_HOST, иначе $(hostname). Переопредели
+# переменной, если алиас в ~/.ssh/config не совпадает с hostname сервера:
+#   CODE_REMOTE_HOST=myalias code-remote file.ts
+
+set -euo pipefail
+
+readonly PROG="$(basename "$0")"
+
+die() { echo "$PROG: $*" >&2; exit 1; }
+
+usage() {
+    echo "usage: $PROG <path> [line]" >&2
+    echo "       $PROG <path>:<line>" >&2
+    exit 2
+}
+
+[[ $# -ge 1 ]] || usage
+
+target=$1
+line=${2:-}
+
+# Форма file:line — разбираем, только если суффикс числовой, а сам путь без него
+# существует (чтобы не поломать имена файлов с двоеточием).
+if [[ -z "$line" && "$target" =~ ^(.+):([0-9]+)$ ]]; then
+    if [[ -e "${BASH_REMATCH[1]}" ]]; then
+        target=${BASH_REMATCH[1]}
+        line=${BASH_REMATCH[2]}
+    fi
+fi
+
+[[ -z "$line" || "$line" =~ ^[0-9]+$ ]] || die "номер строки должен быть числом: $line"
+
+# Абсолютный путь (без требования существования — можно открыть и новый файл).
+abs=$(realpath -m -- "$target") || die "не удалось разрешить путь: $target"
+
+# Формируем хвост аргументов для `code` в зависимости от типа цели.
+code_args=()
+if [[ -d "$abs" ]]; then
+    # Папка — открыть как проект.
+    code_args=("$abs")
+elif [[ -n "$line" ]]; then
+    # Файл с переходом на строку, в текущем окне.
+    code_args=(--reuse-window --goto "$abs:$line")
+else
+    # Файл (в т.ч. *.code-workspace) — в текущем окне.
+    code_args=(--reuse-window "$abs")
+fi
+
+if [[ -n "${SSH_CONNECTION:-}" ]]; then
+    # ── Удалённый режим ──
+    [[ -n "${KITTY_LISTEN_ON:-}" ]] || die \
+        "remote control kitty не проброшен ($KITTY_LISTEN_ON пуст). Подключайся через 'kitten ssh <host>'."
+    command -v kitty >/dev/null 2>&1 || die "нет 'kitty' в PATH на сервере (нужен kitten ssh)."
+
+    host=${CODE_REMOTE_HOST:-$(hostname)}
+    # `code` исполнится на ЛОКАЛЬНОЙ машине; --type=background — без окна в kitty.
+    kitty @ launch --type=background -- \
+        code --remote "ssh-remote+$host" "${code_args[@]}"
+    echo "$PROG: открываю в локальном VSCode (ssh-remote+$host): $abs${line:+:$line}"
+else
+    # ── Локальный режим ──
+    command -v code >/dev/null 2>&1 || die "нет 'code' в PATH."
+    code "${code_args[@]}"
+fi
