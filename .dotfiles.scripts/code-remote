@@ -76,7 +76,15 @@ if [[ -n "${SSH_CONNECTION:-}" ]]; then
     rc=$(command -v kitten || command -v kitty) || \
         die "нет 'kitten'/'kitty' в PATH на сервере (нужен 'kitten ssh' с remote_kitty)."
 
-    host=${CODE_REMOTE_HOST:-$(hostname)}
+    if [[ -n "${CODE_REMOTE_HOST:-}" ]]; then
+        host=$CODE_REMOTE_HOST
+    else
+        # Tailscale MagicDNS даёт hostname вида <host>.nebis.ts.net, а
+        # подключаемся по короткому алиасу без суффикса — отрезаем его,
+        # иначе VSCode не сопоставит хост с ~/.ssh/config.
+        host=$(hostname)
+        host=${host%.nebis.ts.net}
+    fi
     # `code` исполнится на ЛОКАЛЬНОЙ машине; --type=background — без окна в kitty.
     "$rc" @ launch --type=background -- \
         code --remote "ssh-remote+$host" "${code_args[@]}"
