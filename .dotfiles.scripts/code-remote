@@ -70,12 +70,15 @@ fi
 if [[ -n "${SSH_CONNECTION:-}" ]]; then
     # ── Удалённый режим ──
     [[ -n "${KITTY_LISTEN_ON:-}" ]] || die \
-        "remote control kitty не проброшен ($KITTY_LISTEN_ON пуст). Подключайся через 'kitten ssh <host>'."
-    command -v kitty >/dev/null 2>&1 || die "нет 'kitty' в PATH на сервере (нужен kitten ssh)."
+        "remote control kitty не проброшен (KITTY_LISTEN_ON пуст). Подключайся через 'kitten ssh <host>' (не обычный ssh) — тогда сокет пробросится автоматически."
+    # На сервере remote control обычно доступен как `kitten @` (ssh-киттен сам
+    # подкладывает kitten-шим через remote_kitty); где-то есть и `kitty`.
+    rc=$(command -v kitten || command -v kitty) || \
+        die "нет 'kitten'/'kitty' в PATH на сервере (нужен 'kitten ssh' с remote_kitty)."
 
     host=${CODE_REMOTE_HOST:-$(hostname)}
     # `code` исполнится на ЛОКАЛЬНОЙ машине; --type=background — без окна в kitty.
-    kitty @ launch --type=background -- \
+    "$rc" @ launch --type=background -- \
         code --remote "ssh-remote+$host" "${code_args[@]}"
     echo "$PROG: открываю в локальном VSCode (ssh-remote+$host): $abs${line:+:$line}"
 else
