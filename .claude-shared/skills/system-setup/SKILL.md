@@ -17,8 +17,18 @@ already configured. Don't re-derive what's already documented.
 
 ## After changing something
 
-Document the change in `~/.system-setup/` as its own markdown file (one topic per
-file). Capture:
+First decide whether it's worth documenting at all. **Skip the log for straightforward,
+low-value actions** — a standard package install from an official repo, a one-line config
+tweak, anything with no root-cause investigation, no gotchas, and an obvious/standard revert.
+If the "Cause" and "Side effects / gotchas" fields below would be empty, don't write an entry.
+
+Document only changes where future-you would lose something without a note: a non-obvious
+root cause, a workaround, a fix that touches several files, tricky reverts, or upgrade
+caveats. When in doubt, prefer not writing — the log is for hard-won context, not a command
+history.
+
+For the changes worth keeping, document each in `~/.system-setup/` as its own markdown file
+(one topic per file). Capture:
 
 - **Symptom** — what was broken / why the change was made.
 - **Cause** — the actual root cause, once known (note superseded theories).
