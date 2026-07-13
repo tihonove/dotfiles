@@ -1,2 +1,6 @@
 # Скачивается при установке через update-vendored.sh (nightly-бинарник vexx), в git не храним
 /.dotfiles.scripts/vexx
+
+# Runtime-каталог Claude Code: креды, кэш, сессии, история, плагины и т.п.
+# Источник правды — .claude-shared/, симлинки в .claude/ пересоздаёт install.sh.
+/.claude/

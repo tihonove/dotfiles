@@ -1,1 +1,0 @@
-/home/tihonove/.dotfiles/.claude-shared/CLAUDE.md
