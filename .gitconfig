@@ -50,6 +50,8 @@
 	updateRefs = true
 [includeIf "gitdir:~/"]
     path = ~/.gitconfig.local
+[includeIf "gitdir:/workspaces/"]
+    path = ~/.gitconfig.workspace
 [credential "https://github.com"]
 	helper = 
 	helper = !/usr/bin/gh auth git-credential

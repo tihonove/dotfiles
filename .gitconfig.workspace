@@ -1,0 +1,9 @@
+# Git-конфиг только для devcontainer-воркспейсов (подключается из ~/.gitconfig
+# через includeIf gitdir:/workspaces/). На основной машине не активен —
+# там нет репозиториев под /workspaces/.
+#
+# devsy кладёт в рабочую копию https-remote независимо от схемы источника.
+# Этот rewrite заставляет git прозрачно ходить по ssh (клон/fetch/push идут
+# проброшенным ssh-agent'ом при `devsy ws ssh`), не переписывая сам remote.
+[url "git@github.com:"]
+	insteadOf = https://github.com/

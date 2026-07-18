@@ -32,9 +32,11 @@ if [[ -z "$src" ]]; then
     exit 2
 fi
 
-# owner/repo -> github.com/owner/repo (только «слово/слово», не путь и не url)
+# owner/repo -> git@github.com:owner/repo.git (чекаут по ssh, а не https;
+# клон и push внутри контейнера идут проброшенным ssh-agent'ом)
+# Срабатывает только на «слово/слово» — не на путь и не на готовый url.
 if [[ "$src" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
-    src="github.com/$src"
+    src="git@github.com:${src%.git}.git"
 fi
 
 # имя воркспейса для последующего ssh (devsy приводит id к нижнему регистру)
@@ -47,8 +49,11 @@ name="${name,,}"
 
 run() { echo "+ $*"; [[ "$dry" == 1 ]] || "$@"; }
 
-# -v: видно docker build, postCreateCommand и установку dotfiles
-run devsy ws up "$src" -v
+# --id "$name": иначе scp-форма ssh-URL (git@github.com:...) даёт devsy
+# уродливый id вида github-com-owner-repo и папку под него; с явным id
+# воркспейс всегда чистый (owner/repo -> repo) и совпадает с ssh-именем ниже.
+# -v: видно docker build, postCreateCommand и установку dotfiles.
+run devsy ws up "$src" --id "$name" -v
 
 if [[ "$ssh_after" == 1 ]]; then
     run devsy ws ssh "$name"
