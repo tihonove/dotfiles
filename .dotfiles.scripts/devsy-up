@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# Поднять devsy-воркспейс с видимыми логами сборки и зайти в него.
+#
+# Использование:
+#   devsy-up tihonove/vexx        # github-сокращение -> github.com/tihonove/vexx
+#   devsy-up github.com/foo/bar   # полный источник (git-url или github.com/...)
+#   devsy-up vexx                 # переподнять существующий воркспейс по имени
+#   devsy-up .                    # локальная папка (текущий каталог)
+#   devsy-up vexx --no-ssh        # только поднять, не заходить внутрь
+#   devsy-up vexx -n              # dry-run: показать команды, ничего не выполнять
+#
+# Провайдер должен быть настроен заранее (см. devsy-setup).
+
+set -euo pipefail
+
+ssh_after=1
+dry=0
+src=""
+
+for a in "$@"; do
+    case "$a" in
+        --no-ssh)     ssh_after=0 ;;
+        -n|--dry-run) dry=1 ;;
+        -*)           echo "неизвестный флаг: $a" >&2; exit 2 ;;
+        *)            src="$a" ;;
+    esac
+done
+
+if [[ -z "$src" ]]; then
+    echo "укажи источник: owner/repo, git-url, имя воркспейса или ." >&2
+    exit 2
+fi
+
+# owner/repo -> github.com/owner/repo (только «слово/слово», не путь и не url)
+if [[ "$src" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+    src="github.com/$src"
+fi
+
+# имя воркспейса для последующего ssh (devsy приводит id к нижнему регистру)
+if [[ "$src" == "." || -d "$src" ]]; then
+    name="$(basename "$(cd "$src" && pwd)")"
+else
+    name="$(basename "${src%.git}")"
+fi
+name="${name,,}"
+
+run() { echo "+ $*"; [[ "$dry" == 1 ]] || "$@"; }
+
+# -v: видно docker build, postCreateCommand и установку dotfiles
+run devsy ws up "$src" -v
+
+if [[ "$ssh_after" == 1 ]]; then
+    run devsy ws ssh "$name"
+fi

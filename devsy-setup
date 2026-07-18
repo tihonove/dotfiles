@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# Идемпотентная установка и настройка devsy (https://devsy.sh)
+#
+# Ставит CLI (если его нет) и приводит провайдеры к описанной здесь
+# конфигурации. Повторный запуск безопасен: существующий провайдер не
+# пересоздаётся, а обновляется через `provider set`.
+#
+# Секретов здесь нет: ssh-провайдер использует ключи из ~/.ssh / ssh-agent.
+
+set -e
+
+# --- CLI ---
+
+if ! command -v devsy >/dev/null 2>&1; then
+    case "$(uname -m)" in
+        x86_64)        arch=amd64 ;;
+        aarch64|arm64) arch=arm64 ;;
+        *) echo "Неизвестная архитектура: $(uname -m)" >&2; exit 1 ;;
+    esac
+    echo "Устанавливаю devsy CLI в ~/.local/bin..."
+    mkdir -p ~/.local/bin
+    curl -fsSL -o ~/.local/bin/devsy \
+        "https://github.com/devsy-org/devsy/releases/latest/download/devsy-linux-$arch"
+    chmod +x ~/.local/bin/devsy
+fi
+
+echo "devsy $(devsy --version)"
+
+# --- Провайдер ssh: облачная машина ---
+
+ssh_options=(
+    -o HOST=tihonove@37.27.200.76
+    -o PORT=22
+    -o INACTIVITY_TIMEOUT=2h
+    -o INJECT_DOCKER_CREDENTIALS=true
+    -o INJECT_GIT_CREDENTIALS=true
+    -o USE_BUILTIN_SSH=false
+    -o DOCKER_PATH=docker
+    -o AGENT_PATH=/tmp/tihonove/devsy/agent
+)
+
+if devsy provider list --result-format json -q | grep -q '"ssh"'; then
+    echo "Провайдер ssh уже есть — обновляю опции..."
+    devsy provider set ssh --single-machine "${ssh_options[@]}"
+else
+    echo "Добавляю провайдер ssh..."
+    devsy provider add ssh --single-machine --use "${ssh_options[@]}"
+fi
+
+devsy provider use ssh
+
+# --- Прочие настройки ---
+
+# IDE по умолчанию не навязываем: подключение — vscode/ssh по месту
+devsy ide use none
+
+# Мои dotfiles ставятся в каждый воркспейс при сборке.
+# Установочный скрипт (install.sh) devsy находит сам; при желании можно
+# указать явно через DOTFILES_SCRIPT.
+devsy context set -o DOTFILES_URL=https://github.com/tihonove/dotfiles
+
+echo "Готово. Проверка: devsy provider get ssh"
