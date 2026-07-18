@@ -7,3 +7,8 @@
 # проброшенным ssh-agent'ом при `devsy ws ssh`), не переписывая сам remote.
 [url "git@github.com:"]
 	insteadOf = https://github.com/
+# В свежесобранном контейнере github.com ещё не в known_hosts, а дефолтный
+# StrictHostKeyChecking рубит первое подключение. accept-new принимает ключ
+# при первом контакте и пинит его дальше (меняется — отвергает).
+[core]
+	sshCommand = ssh -o StrictHostKeyChecking=accept-new
