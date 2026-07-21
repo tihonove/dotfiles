@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Универсальный скриншот для Wayland: захват -> аннотирование в satty.
+#
+#   screenshot area    выделить область (по умолчанию)
+#   screenshot full    весь экран
+#   screenshot window  активное окно (только wlroots/sway)
+#
+# Под wlroots-композиторами (sway, Hyprland) использует grim + slurp.
+# Под GNOME/Mutter grim не работает — Mutter не реализует wlr-screencopy,
+# а org.gnome.Shell.Screenshot закрыт для сторонних клиентов ("Screenshot is
+# not allowed"), поэтому захват идёт через xdg-desktop-portal.
+
+set -euo pipefail
+
+MODE="${1:-area}"
+OUTDIR="${SCREENSHOT_DIR:-$HOME/Pictures/Screenshots}"
+mkdir -p "$OUTDIR"
+
+die() { notify-send -u critical "Скриншот" "$1" 2>/dev/null || true; echo "$1" >&2; exit 1; }
+
+# Захват в PNG на stdout. Ненулевой код возврата = пользователь отменил.
+capture_wlroots() {
+    local geom
+    case "$MODE" in
+        area)
+            geom=$(slurp -d) || return 1
+            grim -g "$geom" -
+            ;;
+        window)
+            geom=$(swaymsg -t get_tree \
+                | jq -r 'recurse(.nodes[]?, .floating_nodes[]?) | select(.focused)
+                         | "\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height)"')
+            grim -g "$geom" -
+            ;;
+        full) grim - ;;
+        *)    die "Неизвестный режим: $MODE" ;;
+    esac
+}
+
+# interactive=true открывает штатный UI GNOME (область/окно/экран),
+# false — сразу снимает весь экран.
+capture_portal() {
+    local interactive=true path
+    [[ "$MODE" == "full" ]] && interactive=false
+
+    path=$(INTERACTIVE="$interactive" python3 -c '
+import os, sys, gi
+from urllib.parse import urlparse, unquote
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+
+bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+token = "screenshot_satty"
+handle = "/org/freedesktop/portal/desktop/request/%s/%s" % (
+    bus.get_unique_name()[1:].replace(".", "_"), token)
+
+loop, out = GLib.MainLoop(), {}
+
+def on_response(conn, sender, path, iface, signal, params):
+    out["code"], res = params.unpack()
+    out["uri"] = res.get("uri", "")
+    loop.quit()
+
+# Подписка ДО вызова: иначе можно проспать Response.
+bus.signal_subscribe("org.freedesktop.portal.Desktop",
+                     "org.freedesktop.portal.Request", "Response", handle,
+                     None, Gio.DBusSignalFlags.NONE, on_response)
+
+bus.call_sync("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+              "org.freedesktop.portal.Screenshot", "Screenshot",
+              GLib.Variant("(sa{sv})", ("", {
+                  "handle_token": GLib.Variant("s", token),
+                  "interactive": GLib.Variant("b", os.environ["INTERACTIVE"] == "true"),
+              })), None, Gio.DBusCallFlags.NONE, -1, None)
+
+loop.run()
+if out.get("code") != 0:
+    sys.exit(1)
+print(unquote(urlparse(out["uri"]).path))
+') || return 1
+
+    cat "$path"
+    # GNOME кладёт свою копию в ~/Pictures/Screenshots — убираем дубль,
+    # сохранением занимается satty.
+    rm -f "$path"
+}
+
+if [[ "${XDG_CURRENT_DESKTOP:-}" == *GNOME* ]] || ! command -v grim >/dev/null; then
+    CAPTURE=capture_portal
+else
+    CAPTURE=capture_wlroots
+fi
+
+SHOT=$(mktemp --tmpdir screenshot-XXXXXX.png)
+trap 'rm -f "$SHOT"' EXIT
+
+# Отмена (Escape) — молча выходим, не открывая satty с пустым файлом.
+"$CAPTURE" >"$SHOT" || exit 0
+[[ -s "$SHOT" ]] || exit 0
+
+satty --filename "$SHOT" \
+    --output-filename "$OUTDIR/screenshot-%Y%m%d-%H%M%S.png" \
+    --copy-command wl-copy \
+    --initial-tool arrow \
+    --actions-on-enter save-to-clipboard \
+    --early-exit
