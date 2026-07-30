@@ -23,6 +23,50 @@ github_latest_version() {
         | grep -oP '"tag_name":\s*"v?\K[^"]+'
 }
 
+install_jetbrains_mono_nerd_font() {
+    echo "JetBrainsMono Nerd Font..."
+
+    local font_dir="$HOME/.local/share/fonts/JetBrainsMonoNerdFont"
+
+    local version
+    version=$(github_latest_version ryanoasis/nerd-fonts)
+    [[ -n "$version" ]] || { echo "❌ Не определил версию nerd-fonts" >&2; return 1; }
+    echo "  последний релиз: v$version"
+
+    local tmp
+    tmp=$(mktemp -d)
+    trap "rm -rf '$tmp'" RETURN
+
+    curl -fsSL -o "$tmp/font.zip" \
+        "https://github.com/ryanoasis/nerd-fonts/releases/download/v${version}/JetBrainsMono.zip"
+
+    # unzip в системе нет, а python3 есть. Заодно фильтруем: из архива нужны
+    # только два начертания — обычное и Mono (одноширинные глифы, его хочет
+    # kitty). Propo-вариант пропорциональный, в терминале не нужен и только
+    # плодит одноимённые семейства в списках шрифтов.
+    rm -rf "$font_dir"
+    mkdir -p "$font_dir"
+    python3 - "$tmp/font.zip" "$font_dir" <<'PY'
+import sys, zipfile, os, posixpath
+
+src, dst = sys.argv[1], sys.argv[2]
+keep = ("JetBrainsMonoNerdFont-", "JetBrainsMonoNerdFontMono-")
+with zipfile.ZipFile(src) as z:
+    for name in z.namelist():
+        base = posixpath.basename(name)
+        if base.endswith(".ttf") and base.startswith(keep):
+            with z.open(name) as fsrc, open(os.path.join(dst, base), "wb") as fdst:
+                fdst.write(fsrc.read())
+PY
+
+    local count
+    count=$(find "$font_dir" -name '*.ttf' | wc -l)
+    [[ "$count" -gt 0 ]] || { echo "❌ Из архива ничего не распаковалось" >&2; return 1; }
+
+    fc-cache -f "$font_dir" >/dev/null
+    echo "  ✅ начертаний: $count, в $font_dir"
+}
+
 install_starship() {
     echo "starship..."
 
@@ -48,3 +92,4 @@ install_starship() {
 }
 
 install_starship
+install_jetbrains_mono_nerd_font

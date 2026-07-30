@@ -41,3 +41,5 @@ git clone https://github.com/tihonove/dotfiles.git ~/.dotfiles
 
 - `.bashrc` — минимальный, растёт по шагам
 - **starship** — промпт, конфиг `home/.config/starship.toml`
+- **JetBrainsMono Nerd Font** — ставится в `~/.local/share/fonts`,
+  через `home/.config/fontconfig/fonts.conf` становится дефолтным `monospace`
