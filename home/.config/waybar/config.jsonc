@@ -22,6 +22,7 @@
         "temperature",
         "backlight",
         "sway/language",
+        "custom/theme",
         "battery",
         "clock",
         "tray",
@@ -137,6 +138,22 @@
             "car": "",
             "default": ["", "", ""]
         }
+    },
+
+    // Светлая/тёмная тема. Скрипт дёргает gsettings, оттуда через
+    // xdg-desktop-portal тему видят Chrome, Electron и GTK — см. комментарий
+    // в ~/.local/bin/theme-toggle.
+    //
+    // interval "once" + signal: модуль сам не опрашивается, а перерисовывается
+    // по SIGRTMIN+8 — его шлёт сам скрипт, чтобы иконка менялась и при вызове
+    // с клавиатуры (Win+Shift+D в sway config), а не только по клику.
+    "custom/theme": {
+        "format": "{}",
+        "return-type": "json",
+        "exec": "$HOME/.local/bin/theme-toggle status",
+        "on-click": "$HOME/.local/bin/theme-toggle toggle",
+        "interval": "once",
+        "signal": 8
     },
 
     // Меню выключения по клику. XML лежит в пакете waybar, не в репе.

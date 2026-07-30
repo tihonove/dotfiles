@@ -88,6 +88,7 @@ button:hover {
 #mode,
 #idle_inhibitor,
 #scratchpad,
+#custom-theme,
 #custom-power {
     padding: 0 10px;
     background-color: transparent;
@@ -131,6 +132,10 @@ button:hover {
 #backlight               { color: #94e2d5; }   /* teal */
 #language                { color: #b4befe; }   /* lavender */
 #scratchpad              { color: #a6adc8; }
+
+/* Луна на тёмной теме, солнце на светлой — цвет по смыслу иконки */
+#custom-theme.dark       { color: #b4befe; }   /* lavender */
+#custom-theme.light      { color: #f9e2af; }   /* yellow */
 
 #clock                   { color: #cdd6f4; }   /* text */
 #custom-power            { color: #f38ba8; }

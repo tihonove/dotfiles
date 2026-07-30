@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Переключение светлой/тёмной темы для всего десктопа.
+#
+# Источник правды — gsettings (org.gnome.desktop.interface). Дальше цепочка:
+#
+#   gsettings ──> dconf ──> xdg-desktop-portal-gtk
+#                              └─> org.freedesktop.portal.Settings
+#                                  ключ org.freedesktop.appearance/color-scheme
+#
+# Кто что читает:
+#   Chrome/Brave/Edge/Vivaldi/Opera, Electron (VSCode) — портал, color-scheme.
+#     Реагируют вживую, перезапуск не нужен. В Chrome тема оформления должна
+#     стоять "GTK"/системная (chrome://settings/appearance), иначе поменяется
+#     только prefers-color-scheme у сайтов, а рамки останутся как были.
+#   GTK4/libadwaita — портал, color-scheme. Вживую.
+#   GTK3 под Wayland — портал, но ключ gtk-theme (color-scheme он не знает),
+#     поэтому ниже отдельно переключается Adwaita <-> Adwaita-dark. Вживую.
+#   GTK3 под XWayland и всё, что портал игнорирует — settings.ini, читается
+#     только при старте приложения.
+#
+# Портальный бэкенд под sway выбирается через ~/.config/xdg-desktop-portal/
+# sway-portals.conf (default=gtk) — без него Settings отдавал бы пустоту.
+#
+# Использование:
+#   theme-toggle            — переключить
+#   theme-toggle dark|light — выставить явно
+#   theme-toggle status     — JSON для waybar (custom/theme)
+#   theme-toggle get        — dark|light
+
+set -euo pipefail
+
+IFACE=org.gnome.desktop.interface
+WAYBAR_SIGNAL=RTMIN+8
+
+# Темы GTK3. Если однажды поставишь другую пару — менять тут.
+GTK_LIGHT=Adwaita
+GTK_DARK=Adwaita-dark
+
+current() {
+    case "$(gsettings get "$IFACE" color-scheme)" in
+        *prefer-dark*) echo dark ;;
+        *)             echo light ;;
+    esac
+}
+
+# settings.ini не перезаписываем целиком: там могут лежать шрифты, DPI и прочее.
+# Правим/добавляем только две строки в секции [Settings].
+patch_settings_ini() {
+    local file="$1" theme="$2" prefer_dark="$3"
+    mkdir -p "$(dirname "$file")"
+    [[ -f "$file" ]] || printf '[Settings]\n' >"$file"
+    grep -q '^\[Settings\]' "$file" || printf '[Settings]\n' >>"$file"
+
+    local key
+    for key in "gtk-theme-name=$theme" "gtk-application-prefer-dark-theme=$prefer_dark"; do
+        if grep -q "^${key%%=*}=" "$file"; then
+            sed -i "s|^${key%%=*}=.*|$key|" "$file"
+        else
+            sed -i "0,/^\[Settings\]/s|^\[Settings\]|[Settings]\n$key|" "$file"
+        fi
+    done
+}
+
+apply() {
+    local mode="$1" scheme gtk prefer_dark
+    if [[ "$mode" == dark ]]; then
+        scheme=prefer-dark; gtk=$GTK_DARK; prefer_dark=1
+    else
+        scheme=prefer-light; gtk=$GTK_LIGHT; prefer_dark=0
+    fi
+
+    gsettings set "$IFACE" color-scheme "$scheme"
+    gsettings set "$IFACE" gtk-theme "$gtk"
+
+    patch_settings_ini "$HOME/.config/gtk-3.0/settings.ini" "$gtk" "$prefer_dark"
+    patch_settings_ini "$HOME/.config/gtk-4.0/settings.ini" "$gtk" "$prefer_dark"
+
+    # Qt-приложений тут пока нет, но переменная бесплатная и подхватится
+    # теми, что запустятся из сессии позже.
+    command -v systemctl >/dev/null &&
+        systemctl --user set-environment QT_QPA_PLATFORMTHEME=gtk3 2>/dev/null || true
+
+    pkill -"$WAYBAR_SIGNAL" waybar 2>/dev/null || true
+}
+
+case "${1:-toggle}" in
+    toggle)
+        [[ "$(current)" == dark ]] && apply light || apply dark
+        ;;
+    dark|light)
+        apply "$1"
+        ;;
+    get)
+        current
+        ;;
+    status)
+        if [[ "$(current)" == dark ]]; then
+            # nf-fa-moon_o / nf-fa-sun_o из Nerd Font — как остальные иконки панели
+            printf '{"text":"","alt":"dark","class":"dark","tooltip":"Тёмная тема — клик переключит на светлую"}\n'
+        else
+            printf '{"text":"","alt":"light","class":"light","tooltip":"Светлая тема — клик переключит на тёмную"}\n'
+        fi
+        ;;
+    *)
+        echo "usage: ${0##*/} [toggle|dark|light|get|status]" >&2
+        exit 2
+        ;;
+esac

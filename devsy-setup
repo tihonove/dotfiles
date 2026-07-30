@@ -1,0 +1,72 @@
+#!/bin/bash
+
+# Идемпотентная настройка devsy (https://devsy.sh) под облачную машину.
+#
+# Сам CLI ставит update-tools.sh. Тут только провайдер: существующий не
+# пересоздаётся, а обновляется через `provider set`.
+#
+# Секретов здесь нет: ssh-провайдер берёт ключи из ~/.ssh / ssh-agent.
+#
+# ⚠ Контейнеры этот скрипт не трогает — он правит только локальный конфиг
+#   devsy. Пересоздать воркспейс может `devsy ws up`, см. раздел ниже.
+
+set -e
+
+command -v devsy >/dev/null || { echo "devsy не установлен, запусти update-tools.sh" >&2; exit 1; }
+
+echo "devsy $(devsy --version)"
+
+# --- Провайдер ssh: облачная машина ---
+
+ssh_options=(
+    -o HOST=tihonove@37.27.200.76
+    -o PORT=22
+    -o INACTIVITY_TIMEOUT=2h
+    -o INJECT_DOCKER_CREDENTIALS=true
+    -o INJECT_GIT_CREDENTIALS=true
+    -o USE_BUILTIN_SSH=false
+    -o DOCKER_PATH=docker
+    -o AGENT_PATH=/tmp/tihonove/devsy/agent
+)
+
+if devsy provider list --result-format json -q | grep -q '"ssh"'; then
+    echo "Провайдер ssh уже есть — обновляю опции..."
+    devsy provider set ssh --single-machine "${ssh_options[@]}"
+else
+    echo "Добавляю провайдер ssh..."
+    devsy provider add ssh --single-machine --use "${ssh_options[@]}"
+fi
+
+devsy provider use ssh
+
+# IDE по умолчанию не навязываем: подключение — vscode/ssh по месту
+devsy ide use none
+
+# DOTFILES_URL намеренно не выставляется. В старой версии тут стоял
+# https://github.com/tihonove/dotfiles — то есть каждый новый воркспейс тянул бы
+# СТАРЫЕ dotfiles. Вернуть, когда эта репа будет запушена:
+#   devsy context set -o DOTFILES_URL=<url новой репы>
+
+echo "Готово. Проверка: devsy provider get ssh"
+
+# ── Как подцепиться к УЖЕ СУЩЕСТВУЮЩИМ воркспейсам ────────────────────────────
+#
+# devsy держит метаданные воркспейса локально, в
+# ~/.devsy/contexts/default/workspaces/<id>/workspace.json. На новой машине их
+# нет, и `devsy ws up <repo>` не подключится к старому контейнеру, а поднимет
+# НОВЫЙ: имя образа и тома содержат uid воркспейса, а он берётся из этого файла.
+#
+# Спасает то, что агент на хосте хранит свою копию. Восстановление:
+#
+#   ssh <host> 'cat ~/.devsy/contexts/default/workspaces/<id>/agent/workspace.json' \
+#     | python3 -c 'import json,sys,os;
+#         w=json.load(sys.stdin)["workspace"];
+#         d=os.path.expanduser("~/.devsy/contexts/default/workspaces/"+w["id"]);
+#         os.makedirs(d, exist_ok=True);
+#         json.dump(w, open(d+"/workspace.json","w"), indent=2)'
+#
+# После этого `devsy ws list` покажет воркспейс, `devsy ws status <id>` вернёт
+# Running, а `devsy ws ssh <id>` зайдёт в существующий контейнер.
+#
+# Проверять до и после — `ssh <host> docker ps -a`: ID и uptime контейнеров
+# меняться не должны.

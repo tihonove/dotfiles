@@ -91,5 +91,17 @@ install_starship() {
     echo "  ✅ $("$BIN_DIR/starship" --version | head -1)"
 }
 
+install_devsy() {
+    echo "devsy..."
+
+    mkdir -p "$BIN_DIR"
+    curl -fsSL -o "$BIN_DIR/devsy" \
+        "https://github.com/devsy-org/devsy/releases/latest/download/devsy-linux-arm64"
+    chmod +x "$BIN_DIR/devsy"
+
+    echo "  ✅ devsy $("$BIN_DIR/devsy" --version)"
+}
+
 install_starship
 install_jetbrains_mono_nerd_font
+install_devsy
