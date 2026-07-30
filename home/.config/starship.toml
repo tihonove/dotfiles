@@ -1,0 +1,36 @@
+# Двухстрочный вывод
+format = """\
+$directory$git_branch$git_status$hostname$fill$cmd_duration
+$character"""
+
+add_newline = false
+
+[fill]
+symbol = ' '
+
+# 👤 Показывать пользователя только если root или не ты
+[username]
+show_always = false
+show_always_in_prompt = false
+disabled = false
+style_user = "yellow"
+style_root = "bold red"
+
+# Показывать, если пользователь не совпадает с текущим логином
+detect_env_vars = ["USER", "LOGNAME"]
+
+# ✳️ Только флаг изменений
+[git_status]
+format = " [$all_status]($style)"
+style = "yellow"
+disabled = false
+staged = ""
+deleted = ""
+modified = "±"
+untracked = "*"
+ahead = ""
+behind = ""
+diverged = ""
+
+[hostname]
+format = "[$ssh_symbol$hostname]($style)"
