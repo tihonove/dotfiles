@@ -52,9 +52,13 @@ client.background       #1e1e2e
 
 ### Автозапуск
 # Прокинуть переменные сессии в dbus/systemd — нужно панели и порталам.
-exec dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway XCURSOR_THEME XCURSOR_SIZE
+exec_always dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway XCURSOR_THEME XCURSOR_SIZE
 # Панель: конфиг в ~/.config/waybar/. Свой бар sway не нужен.
-exec waybar
+#
+# exec_always, а не exec: `exec` отрабатывает только при старте сессии, и после
+# $mod+Shift+C панель бы не вернулась. pkill перед запуском — чтобы reload не
+# плодил вторую копию поверх первой.
+exec_always sh -c 'pkill -x waybar; exec waybar'
 # Стартовать с терминала — заодно страховка, пока биндов почти нет.
 exec $term
 
