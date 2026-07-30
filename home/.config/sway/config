@@ -1,0 +1,74 @@
+# vim:ft=swayconfig
+# ──────────────────────────────────────────────────────────────────────────────
+# Sway. Выбор сессии в GDM: шестерёнка ⚙ → «Sway».
+# Перезагрузить конфиг: $mod+Shift+C.
+#
+# Собирается заново, с нуля. Из старого конфига перенесены только базовые
+# настройки и панель; биндов пока намеренно почти нет — добавляем по одному.
+# ──────────────────────────────────────────────────────────────────────────────
+
+### Переменные
+set $mod Mod4
+set $term /usr/bin/kitty
+
+### Раскладка клавиатуры: US + Russian, переключение Win+Space
+input "type:keyboard" {
+    xkb_layout us,ru
+    xkb_options grp:win_space_toggle
+}
+
+### Тачпад: тап-клик и естественная прокрутка
+input "type:touchpad" {
+    tap enabled
+    natural_scroll enabled
+    dwt enabled
+}
+
+### Тема курсора. Без явной темы клиенты грузят "default", где нет resize-курсоров
+# (в VSCode/Electron пропадал курсор на границах панелей). Adwaita — полная, уже стоит.
+# seat также экспортирует XCURSOR_THEME/XCURSOR_SIZE дочерним клиентам.
+seat seat0 xcursor_theme Adwaita 24
+
+### Мониторы
+# Панель ноута — eDP-1, внешние выходы — DP-1/DP-2.
+output * bg #1e1e2e solid_color
+
+### Внешний вид
+default_border pixel 2
+default_floating_border pixel 2
+hide_edge_borders smart
+gaps inner 8
+gaps outer 2
+# Имя семейства именно такое: ставится патченый Nerd Font, обычного
+# «JetBrains Mono» в системе нет и pango молча подобрал бы что попало.
+font pango:JetBrainsMono Nerd Font 10
+# Тема Catppuccin Mocha: border | background | text | indicator | child_border
+client.focused          #89b4fa #1e1e2e #cdd6f4 #b4befe #89b4fa
+client.focused_inactive #45475a #1e1e2e #a6adc8 #45475a #45475a
+client.unfocused        #313244 #1e1e2e #6c7086 #313244 #313244
+client.urgent           #f38ba8 #1e1e2e #1e1e2e #f38ba8 #f38ba8
+client.placeholder      #1e1e2e #1e1e2e #cdd6f4 #1e1e2e #1e1e2e
+client.background       #1e1e2e
+
+### Автозапуск
+# Прокинуть переменные сессии в dbus/systemd — нужно панели и порталам.
+exec dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway XCURSOR_THEME XCURSOR_SIZE
+# Панель: конфиг в ~/.config/waybar/. Свой бар sway не нужен.
+exec waybar
+# Стартовать с терминала — заодно страховка, пока биндов почти нет.
+exec $term
+
+### Клавиши
+# Осознанно пусто: биндов из старого конфига не переносим, добавляем по одному.
+# Ниже — только необходимый минимум, без которого в сессию нельзя войти и из неё
+# нельзя выйти. Если не нужен даже он — выкидывается целиком.
+bindsym --to-code $mod+Return   exec $term
+bindsym --to-code $mod+Shift+q  kill
+bindsym --to-code $mod+Shift+c  reload
+bindsym --to-code $mod+Shift+e  exec swaynag -t warning \
+    -m 'Выйти из sway? (вернёт на экран входа GDM)' \
+    -B 'Выйти' 'swaymsg exit'
+
+# Яркость. --locked: работает и на заблокированном экране.
+bindsym --locked XF86MonBrightnessUp   exec brightnessctl set 5%+
+bindsym --locked XF86MonBrightnessDown exec brightnessctl set 5%-

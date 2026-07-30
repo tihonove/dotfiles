@@ -1,0 +1,155 @@
+// -*- mode: jsonc -*-
+// Панель. Порт стокового /etc/xdg/waybar/config.jsonc — модули те же, выкинуто
+// только то, для чего на этой машине нет ни демона, ни бинарника.
+{
+    "height": 30,
+    "spacing": 4,
+
+    "modules-left": [
+        "sway/workspaces",
+        "sway/mode",
+        "sway/scratchpad"
+    ],
+    "modules-center": [
+        "sway/window"
+    ],
+    "modules-right": [
+        "idle_inhibitor",
+        "pulseaudio",
+        "network",
+        "cpu",
+        "memory",
+        "temperature",
+        "backlight",
+        "sway/language",
+        "battery",
+        "clock",
+        "tray",
+        "custom/power"
+    ],
+
+    // Выкинуто из стокового набора:
+    //   mpd                   — демона mpd нет
+    //   power-profiles-daemon — сервиса нет, модуль просто висел бы пустым
+    //   custom/media          — тянет playerctl и ~/.config/waybar/mediaplayer.py
+    //   battery#bat2          — батарея одна (qcom-battmgr-bat)
+    //   keyboard-state        — CapsLock перемаплен в Ctrl, показывать нечего
+
+    "sway/mode": {
+        "format": "<span style=\"italic\">{}</span>"
+    },
+
+    "sway/scratchpad": {
+        "format": "{icon} {count}",
+        "show-empty": false,
+        "format-icons": ["", ""],
+        "tooltip": true,
+        "tooltip-format": "{app}: {title}"
+    },
+
+    // Раскладка us/ru — переключается Win+Space (см. sway config).
+    "sway/language": {
+        "format": "{short}",
+        "tooltip-format": "{long}"
+    },
+
+    "idle_inhibitor": {
+        "format": "{icon}",
+        "format-icons": {
+            "activated": "",
+            "deactivated": ""
+        }
+    },
+
+    "tray": {
+        "spacing": 10
+    },
+
+    "clock": {
+        "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
+        "format-alt": "{:%Y-%m-%d}"
+    },
+
+    "cpu": {
+        "format": "{usage}% ",
+        "tooltip": false
+    },
+
+    "memory": {
+        "format": "{}% "
+    },
+
+    "temperature": {
+        // Зона 10 — cluster0-thermal, ближайшее к «температуре проца» на этом
+        // Qualcomm: отдельных thermal_zone на пакет тут нет, есть по ядру
+        // (cpu0..cpu7) и общая на кластер. Проверить после апдейта ядра:
+        //   for z in /sys/class/thermal/thermal_zone*; do
+        //       echo "$z $(cat $z/type)"; done | grep cluster
+        "thermal-zone": 10,
+        "critical-threshold": 80,
+        "format": "{temperatureC}°C {icon}",
+        "format-icons": ["", "", ""]
+    },
+
+    "backlight": {
+        // Устройство одно и зовётся просто "backlight" — автоопределения хватает.
+        "format": "{percent}% {icon}",
+        "format-icons": ["", "", "", "", "", "", "", "", ""]
+    },
+
+    "battery": {
+        "states": {
+            "warning": 30,
+            "critical": 15
+        },
+        "format": "{capacity}% {icon}",
+        "format-full": "{capacity}% {icon}",
+        "format-charging": "{capacity}% ",
+        "format-plugged": "{capacity}% ",
+        "format-alt": "{time} {icon}",
+        "format-icons": ["", "", "", "", ""]
+    },
+
+    "network": {
+        "format-wifi": "{essid} ({signalStrength}%) ",
+        "format-ethernet": "{ipaddr}/{cidr} ",
+        "tooltip-format": "{ifname} via {gwaddr} ",
+        "format-linked": "{ifname} (No IP) ",
+        "format-disconnected": "Disconnected ⚠",
+        "format-alt": "{ifname}: {ipaddr}/{cidr}"
+    },
+
+    // Звуковой сервер тут pulseaudio (не pipewire), модуль его и слушает.
+    // on-click из стокового конфига убран: pavucontrol не установлен.
+    "pulseaudio": {
+        "format": "{volume}% {icon} {format_source}",
+        "format-bluetooth": "{volume}% {icon} {format_source}",
+        "format-bluetooth-muted": " {icon} {format_source}",
+        "format-muted": " {format_source}",
+        "format-source": "{volume}% ",
+        "format-source-muted": "",
+        "format-icons": {
+            "headphone": "",
+            "hands-free": "",
+            "headset": "",
+            "phone": "",
+            "portable": "",
+            "car": "",
+            "default": ["", "", ""]
+        }
+    },
+
+    // Меню выключения по клику. XML лежит в пакете waybar, не в репе.
+    "custom/power": {
+        "format": "⏻ ",
+        "tooltip": false,
+        "menu": "on-click",
+        "menu-file": "/usr/share/waybar/custom_modules/power_menu.xml",
+        "menu-actions": {
+            "shutdown": "shutdown",
+            "reboot": "reboot",
+            "suspend": "systemctl suspend",
+            "hibernate": "systemctl hibernate"
+        }
+    }
+}

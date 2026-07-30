@@ -44,3 +44,16 @@ git clone https://github.com/tihonove/dotfiles.git ~/.dotfiles
 - **starship** — промпт, конфиг `home/.config/starship.toml`
 - **JetBrainsMono Nerd Font** — ставится в `~/.local/share/fonts`,
   через `home/.config/fontconfig/fonts.conf` становится дефолтным `monospace`
+- **sway** — база (раскладки, тачпад, тема, автозапуск панели), биндов почти нет
+- **waybar** — панель, порт стокового конфига без мёртвых модулей
+
+## Пакеты
+
+Ставятся руками, в репу не входят:
+
+```sh
+sudo apt install --no-install-recommends brightnessctl
+sudo install -m 644 system/90-backlight.rules /etc/udev/rules.d/
+sudo udevadm control --reload && sudo udevadm trigger -s backlight -c add
+sudo usermod -aG video "$USER"   # применяется после релогина
+```
