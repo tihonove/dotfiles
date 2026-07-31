@@ -67,6 +67,29 @@ PY
     echo "  ✅ начертаний: $count, в $font_dir"
 }
 
+install_noto_color_emoji() {
+    echo "Noto Color Emoji..."
+
+    local font_dir="$HOME/.local/share/fonts/NotoColorEmoji"
+
+    # JetBrainsMono Nerd Font не покрывает emoji-блоки: ✅ (U+2705), ❌ (U+274C),
+    # 💡 (U+1F4A1) и прочие рисуются пустыми квадратами — их нет НИ В ОДНОМ
+    # системном шрифте. Их печатают в том числе скрипты из этой самой репы.
+    #
+    # У noto-emoji нет релизов с ассетами, поэтому берём ttf прямо из main.
+    mkdir -p "$font_dir"
+    curl -fsSL -o "$font_dir/NotoColorEmoji.ttf" \
+        "https://github.com/googlefonts/noto-emoji/raw/main/fonts/NotoColorEmoji.ttf"
+
+    # Битый/обрезанный файл fc-cache молча проглотит, поэтому проверяем, что
+    # fontconfig реально видит в нём глиф.
+    fc-cache -f "$font_dir" >/dev/null
+    fc-list ":charset=1F600" family | grep -qi 'noto color emoji' \
+        || { echo "❌ Шрифт скачался, но emoji-глифов в нём не видно" >&2; return 1; }
+
+    echo "  ✅ $font_dir"
+}
+
 install_starship() {
     echo "starship..."
 
@@ -102,6 +125,34 @@ install_devsy() {
     echo "  ✅ devsy $("$BIN_DIR/devsy" --version)"
 }
 
+install_blesh() {
+    echo "ble.sh..."
+
+    # Ветка nightly: последний стабильный релиз — апрель 2023, он старше самого
+    # bash в системе. Апстрим ставить nightly и рекомендует.
+    #
+    # Ассет один на все архитектуры — это bash-скрипты, не бинарник, так что
+    # проверка aarch64 в начале файла к нему отношения не имеет.
+    local tmp
+    tmp=$(mktemp -d)
+    trap "rm -rf '$tmp'" RETURN
+
+    curl -fsSL -o "$tmp/ble.tar.xz" \
+        "https://github.com/akinomyoga/ble.sh/releases/download/nightly/ble-nightly.tar.xz"
+    tar -xJf "$tmp/ble.tar.xz" -C "$tmp"
+
+    # --install раскладывает всё в ~/.local/share/blesh. Повторный запуск
+    # перезаписывает — обновление делается тем же вызовом.
+    bash "$tmp/ble-nightly/ble.sh" --install "$HOME/.local/share" >/dev/null
+
+    local target="$HOME/.local/share/blesh/ble.sh"
+    [[ -s "$target" ]] || { echo "❌ ble.sh не установился в $target" >&2; return 1; }
+
+    echo "  ✅ ble.sh $(grep -m1 -oP '_ble_init_version=\K.*' "$target")"
+}
+
 install_starship
 install_jetbrains_mono_nerd_font
+install_noto_color_emoji
 install_devsy
+install_blesh
