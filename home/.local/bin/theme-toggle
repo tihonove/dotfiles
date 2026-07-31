@@ -94,11 +94,15 @@ case "${1:-toggle}" in
         current
         ;;
     status)
+        # Иконки Nerd Font заданы кодами, а не сырыми символами: так строка
+        # переживает любой редактор и копипасту, где глиф из Private Use Area
+        # легко превращается в пустоту.
         if [[ "$(current)" == dark ]]; then
-            # nf-fa-moon_o / nf-fa-sun_o из Nerd Font — как остальные иконки панели
-            printf '{"text":"","alt":"dark","class":"dark","tooltip":"Тёмная тема — клик переключит на светлую"}\n'
+            printf '{"text":"%s","alt":"dark","class":"dark","tooltip":"Тёмная тема — клик переключит на светлую"}\n' \
+                "$(printf '')"   # nf-fa-moon_o
         else
-            printf '{"text":"","alt":"light","class":"light","tooltip":"Светлая тема — клик переключит на тёмную"}\n'
+            printf '{"text":"%s","alt":"light","class":"light","tooltip":"Светлая тема — клик переключит на тёмную"}\n' \
+                "$(printf '')"   # nf-fa-sun_o
         fi
         ;;
     *)

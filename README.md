@@ -54,6 +54,18 @@ git clone https://github.com/tihonove/dotfiles.git ~/.dotfiles
 ~/.dotfiles/devsy-setup       # настраивает ssh-провайдер (идемпотентно)
 ```
 
+Заход в контейнеры — через `~/.ssh/config` (лежит в репе), пользователем
+`vscode`, а не root:
+
+```sh
+ssh vexx.devsy        # то же самое: devsy ws ssh vexx --user vscode
+ssh anki-cli.devsy
+ssh devsy-host        # сама облачная машина
+```
+
+⚠ В `home/.ssh/config` записан адрес облачной машины. Если репа станет
+публичной — учитывать.
+
 Воркспейсы живут контейнерами на облачной машине, а их метаданные — локально в
 `~/.devsy/contexts/default/workspaces/`. На новой машине этих метаданных нет, и
 `devsy ws up` поднимет **новый** контейнер вместо подключения к старому. Как

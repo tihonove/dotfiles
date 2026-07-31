@@ -80,7 +80,6 @@ button:hover {
 #cpu,
 #memory,
 #temperature,
-#backlight,
 #network,
 #pulseaudio,
 #language,
@@ -129,7 +128,6 @@ button:hover {
 #temperature             { color: #fab387; }   /* peach */
 #temperature.critical    { color: #f38ba8; }
 
-#backlight               { color: #94e2d5; }   /* teal */
 #language                { color: #b4befe; }   /* lavender */
 #scratchpad              { color: #a6adc8; }
 

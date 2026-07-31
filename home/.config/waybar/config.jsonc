@@ -20,7 +20,6 @@
         "cpu",
         "memory",
         "temperature",
-        "backlight",
         "sway/language",
         "custom/theme",
         "battery",
@@ -35,6 +34,7 @@
     //   custom/media          — тянет playerctl и ~/.config/waybar/mediaplayer.py
     //   battery#bat2          — батарея одна (qcom-battmgr-bat)
     //   keyboard-state        — CapsLock перемаплен в Ctrl, показывать нечего
+    //   backlight             — панель и так широкая, яркость крутится клавишами
 
     "sway/mode": {
         "format": "<span style=\"italic\">{}</span>"
@@ -92,12 +92,6 @@
         "format-icons": ["", "", ""]
     },
 
-    "backlight": {
-        // Устройство одно и зовётся просто "backlight" — автоопределения хватает.
-        "format": "{percent}% {icon}",
-        "format-icons": ["", "", "", "", "", "", "", "", ""]
-    },
-
     "battery": {
         "states": {
             "warning": 30,
@@ -111,13 +105,26 @@
         "format-icons": ["", "", "", "", ""]
     },
 
+    // Компактно: одна иконка — «палочки» по уровню сигнала, без SSID и процентов.
+    // format-icons идёт от слабого к сильному, waybar сам раскладывает
+    // signalStrength 0..100 по длине массива (man 5 waybar-network).
+    //
+    // Подробности не потеряны: они в тултипе, а клик (format-alt) разворачивает
+    // модуль в SSID с процентами и обратно.
+    //
+    // Иконки — Material Design из Nerd Font (U+F091F..U+F092F). Раньше тут были
+    // FontAwesome-глифы, но в файл они записались пустыми, и модуль показывал
+    // голый текст — если правишь эти строки, проверяй байты, а не глаза.
     "network": {
-        "format-wifi": "{essid} ({signalStrength}%) ",
-        "format-ethernet": "{ipaddr}/{cidr} ",
-        "tooltip-format": "{ifname} via {gwaddr} ",
-        "format-linked": "{ifname} (No IP) ",
-        "format-disconnected": "Disconnected ⚠",
-        "format-alt": "{ifname}: {ipaddr}/{cidr}"
+        "format-wifi": "{icon}",
+        "format-icons": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"],
+        "format-ethernet": "󰌘",
+        "format-linked": "󰤫",
+        "format-disconnected": "󰤮",
+        "format-alt": "{icon} {essid} {signalStrength}%",
+        "tooltip-format-wifi": "{essid}  {signalStrength}%\n{ifname}: {ipaddr}/{cidr}\nvia {gwaddr}",
+        "tooltip-format-ethernet": "{ifname}: {ipaddr}/{cidr}\nvia {gwaddr}",
+        "tooltip-format-disconnected": "Сеть отключена"
     },
 
     // Звуковой сервер тут pulseaudio (не pipewire), модуль его и слушает.
@@ -145,8 +152,8 @@
     // в ~/.local/bin/theme-toggle.
     //
     // interval "once" + signal: модуль сам не опрашивается, а перерисовывается
-    // по SIGRTMIN+8 — его шлёт сам скрипт, чтобы иконка менялась и при вызове
-    // с клавиатуры (Win+Shift+D в sway config), а не только по клику.
+    // по SIGRTMIN+8 — его шлёт сам скрипт, чтобы иконка менялась и когда тему
+    // переключают из терминала, а не только по клику.
     "custom/theme": {
         "format": "{}",
         "return-type": "json",
