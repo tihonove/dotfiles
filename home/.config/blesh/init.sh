@@ -4,86 +4,101 @@
 # В старых dotfiles файл лежал в ~/.blerc. ble.sh ищет rcfile в порядке
 # ~/.blerc → ${XDG_CONFIG_HOME:-~/.config}/blesh/init.sh, так что этот путь
 # подхватывается сам, без флагов. Сам ble.sh ставит update-tools.sh.
+#
+# Все face'ы секции задаются ОДНИМ вызовом ble-face в форме NAME=SPEC.
+# Это не косметика: 68 поштучных `ble-face -s` стоили 200 мс на каждом старте
+# интерактивного шелла — вдвое дороже самого ble.sh. Пакетная форма убирает эту
+# цену полностью, таблица face'ов получается побайтово та же.
+#
+# ВНИМАНИЕ: NAME=SPEC — это один аргумент. Пробел перед `=` (например ради
+# выравнивания) разрывает его на два, и ble-face ругается `invalid left-hand
+# side ''`. Поэтому выравнивание — только справа, после значения.
 
 # --- Синтаксис ---
-ble-face -s syntax_default          none
-ble-face -s syntax_command          fg=green
-ble-face -s syntax_quoted           fg=green
-ble-face -s syntax_quotation        fg=green
-ble-face -s syntax_escape           fg=magenta
-ble-face -s syntax_expr             fg=blue
-ble-face -s syntax_error            fg=red
-ble-face -s syntax_varname          fg=none
-ble-face -s syntax_delimiter        none
-ble-face -s syntax_param_expansion  fg=none
-ble-face -s syntax_history_expansion fg=blue
-ble-face -s syntax_function_name    fg=green
-ble-face -s syntax_comment          fg=242
-ble-face -s syntax_glob             fg=magenta
-ble-face -s syntax_brace            none
-ble-face -s syntax_tilde            none
-ble-face -s syntax_document         fg=242
-ble-face -s syntax_document_begin   fg=242
+ble-face \
+    syntax_default=none              \
+    syntax_command=fg=green          \
+    syntax_quoted=fg=green           \
+    syntax_quotation=fg=green        \
+    syntax_escape=fg=magenta         \
+    syntax_expr=fg=blue              \
+    syntax_error=fg=red              \
+    syntax_varname=fg=none           \
+    syntax_delimiter=none            \
+    syntax_param_expansion=fg=none   \
+    syntax_history_expansion=fg=blue \
+    syntax_function_name=fg=green    \
+    syntax_comment=fg=242            \
+    syntax_glob=fg=magenta           \
+    syntax_brace=none                \
+    syntax_tilde=none                \
+    syntax_document=fg=242           \
+    syntax_document_begin=fg=242
 
 # --- Команды ---
-ble-face -s command_builtin_dot     fg=green
-ble-face -s command_builtin         fg=green
-ble-face -s command_alias           fg=green
-ble-face -s command_function        fg=green
-ble-face -s command_file            fg=green
-ble-face -s command_keyword         fg=green
-ble-face -s command_jobs            fg=green
-ble-face -s command_directory       fg=blue,underline
-ble-face -s command_suffix          fg=green
-ble-face -s command_suffix_new      fg=red
+ble-face \
+    command_builtin_dot=fg=green        \
+    command_builtin=fg=green            \
+    command_alias=fg=green              \
+    command_function=fg=green           \
+    command_file=fg=green               \
+    command_keyword=fg=green            \
+    command_jobs=fg=green               \
+    command_directory=fg=blue,underline \
+    command_suffix=fg=green             \
+    command_suffix_new=fg=red
 
 # --- Имена файлов ---
-ble-face -s filename_directory          fg=blue,underline
-ble-face -s filename_directory_sticky   fg=blue,underline
-ble-face -s filename_link               fg=cyan,underline
-ble-face -s filename_orphan             fg=red,underline
-ble-face -s filename_setuid             underline
-ble-face -s filename_setgid             underline
-ble-face -s filename_executable         fg=green,underline
-ble-face -s filename_other              underline
-ble-face -s filename_socket             fg=cyan,underline
-ble-face -s filename_pipe               fg=yellow,underline
-ble-face -s filename_character          underline
-ble-face -s filename_block              underline
-ble-face -s filename_warning            fg=red,underline
-ble-face -s filename_url                fg=blue,underline
-ble-face -s filename_ls_colors          underline
+ble-face \
+    filename_directory=fg=blue,underline        \
+    filename_directory_sticky=fg=blue,underline \
+    filename_link=fg=cyan,underline             \
+    filename_orphan=fg=red,underline            \
+    filename_setuid=underline                   \
+    filename_setgid=underline                   \
+    filename_executable=fg=green,underline      \
+    filename_other=underline                    \
+    filename_socket=fg=cyan,underline           \
+    filename_pipe=fg=yellow,underline           \
+    filename_character=underline                \
+    filename_block=underline                    \
+    filename_warning=fg=red,underline           \
+    filename_url=fg=blue,underline              \
+    filename_ls_colors=underline
 
 # --- Переменные ---
-ble-face -s varname_unset           fg=red
-ble-face -s varname_empty           fg=cyan
-ble-face -s varname_number          none
-ble-face -s varname_expr            fg=blue
-ble-face -s varname_array           fg=cyan
-ble-face -s varname_hash            fg=cyan
-ble-face -s varname_readonly        fg=cyan
-ble-face -s varname_transform       fg=cyan
-ble-face -s varname_export          fg=cyan
-ble-face -s varname_new             none
+ble-face \
+    varname_unset=fg=red      \
+    varname_empty=fg=cyan     \
+    varname_number=none       \
+    varname_expr=fg=blue      \
+    varname_array=fg=cyan     \
+    varname_hash=fg=cyan      \
+    varname_readonly=fg=cyan  \
+    varname_transform=fg=cyan \
+    varname_export=fg=cyan    \
+    varname_new=none
 
 # --- Аргументы ---
-ble-face -s argument_option         fg=cyan
-ble-face -s argument_error          fg=red
+ble-face \
+    argument_option=fg=cyan \
+    argument_error=fg=red
 
 # --- Регионы и UI ---
-ble-face -s region                  bg=238
-ble-face -s region_target           bg=238
-ble-face -s region_match            bg=238
-ble-face -s region_insert           bg=238
-ble-face -s disabled                fg=242
-ble-face -s overwrite_mode          fg=black,bg=cyan
-ble-face -s auto_complete           fg=245
-ble-face -s menu_filter_input       fg=white,bg=black
-ble-face -s prompt_status_line      fg=white,bg=238
-ble-face -s cmdinfo_cd_cdpath       fg=blue
-ble-face -s vbell                   reverse
-ble-face -s vbell_flash             reverse
-ble-face -s vbell_erase             bg=238
+ble-face \
+    region=bg=238                       \
+    region_target=bg=238                \
+    region_match=bg=238                 \
+    region_insert=bg=238                \
+    disabled=fg=242                     \
+    overwrite_mode=fg=black,bg=cyan     \
+    auto_complete=fg=245                \
+    menu_filter_input=fg=white,bg=black \
+    prompt_status_line=fg=white,bg=238  \
+    cmdinfo_cd_cdpath=fg=blue           \
+    vbell=reverse                       \
+    vbell_flash=reverse                 \
+    vbell_erase=bg=238
 
 # Keep Enter executing the command even when ble.sh enters multiline mode.
 ble-bind -m emacs -f 'C-m' accept-line
