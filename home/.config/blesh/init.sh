@@ -100,6 +100,25 @@ ble-face \
     vbell_flash=reverse                 \
     vbell_erase=bg=238
 
+# --- fzf ---
+#
+# Биндинги (C-r, C-t, M-c) и completion по `**` подключаются ТОЛЬКО отсюда,
+# модулями самого ble.sh. Штатный `eval "$(fzf --bash)"` в .bashrc так не
+# работает: ble.sh заменяет собой readline, и bind'ы fzf либо не срабатывают,
+# либо рвут отрисовку строки. Модули оборачивают функции fzf так, чтобы те
+# отдавали терминал ble.sh и возвращали обратно. Запасной путь на случай, когда
+# ble.sh не загрузился, лежит в ~/.config/bash/rc.sh.
+#
+# Каталог с shell-скриптами fzf модуль находит сам: пакет Ubuntu кладёт их в
+# /usr/share/doc/fzf/examples, это один из путей, которые он проверяет. Если
+# однажды не найдёт — задать руками _ble_contrib_fzf_base перед ble-import.
+#
+# -d (отложенная загрузка) тут не оптимизация, а требование порядка:
+# fzf-completion обязан грузиться ПОСЛЕ bash-completion, а тот подключается в
+# rc.sh уже после ble.sh. С -d модуль дожидается конца инициализации.
+ble-import -d integration/fzf-completion
+ble-import -d integration/fzf-key-bindings
+
 # Keep Enter executing the command even when ble.sh enters multiline mode.
 ble-bind -m emacs -f 'C-m' accept-line
 ble-bind -m emacs -f 'RET' accept-line
