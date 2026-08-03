@@ -17,16 +17,40 @@ command -v devsy >/dev/null || { echo "devsy не установлен, запу
 echo "devsy $(devsy --version)"
 
 # --- Провайдер ssh: облачная машина ---
+#
+# Адрес машины, пользователь и путь агента лежат ВНЕ репы. Секретов в них нет,
+# но это инвентарь: не секрет, а карта, которая остаётся верной годами. Репа
+# публичная — подробнее в шапке home/.ssh/config.
+#
+# Файл машинно-локальный, создаётся руками один раз.
+
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/devsy-setup.conf"
+if [[ ! -f "$CONF" ]]; then
+    cat >&2 <<EOF
+❌ Нет $CONF — в нём адрес облачной машины и путь агента.
+   Создать так, значения свои:
+
+     DEVSY_HOST=user@1.2.3.4
+     DEVSY_PORT=22
+     DEVSY_AGENT_PATH=/tmp/user/devsy/agent
+EOF
+    exit 1
+fi
+. "$CONF"
+
+: "${DEVSY_HOST:?не задан в $CONF}"
+: "${DEVSY_AGENT_PATH:?не задан в $CONF}"
+: "${DEVSY_PORT:=22}"
 
 ssh_options=(
-    -o HOST=tihonove@37.27.200.76
-    -o PORT=22
+    -o HOST="$DEVSY_HOST"
+    -o PORT="$DEVSY_PORT"
     -o INACTIVITY_TIMEOUT=2h
     -o INJECT_DOCKER_CREDENTIALS=true
     -o INJECT_GIT_CREDENTIALS=true
     -o USE_BUILTIN_SSH=false
     -o DOCKER_PATH=docker
-    -o AGENT_PATH=/tmp/tihonove/devsy/agent
+    -o AGENT_PATH="$DEVSY_AGENT_PATH"
 )
 
 if devsy provider list --result-format json -q | grep -q '"ssh"'; then
