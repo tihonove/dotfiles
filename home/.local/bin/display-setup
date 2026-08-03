@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+# Настройка мониторов: GUI-раскладка + запоминание её как профиля kanshi.
+#
+# Зачем обёртка. Раскладку удобно двигать мышью — это умеет nwg-displays, но
+# сохранять он умеет только в sway-синтаксис (~/.config/sway/outputs), а sway
+# описывает каждый монитор по отдельности и не знает про комбинации: «когда
+# воткнут внешний — погасить eDP-1» в нём не выражается. Комбинациями заведует
+# kanshi, но своего GUI у него нет и kanshi-формат nwg-displays не поддерживает
+# (в пакете нет ни одного упоминания). Отсюда цепочка:
+#
+#   nwg-displays ──> применяет раскладку в живой сессии sway
+#                        └─> скрипт снимает её из swaymsg -t get_outputs
+#                            и пишет профилем в ~/.config/kanshi/config
+#
+# Поэтому nwg-displays запускается с -o в $XDG_RUNTIME_DIR: его собственный
+# файл нам не нужен и незачем ему лежать в ~/.config/sway.
+#
+# Профиль kanshi матчится по ТОЧНОМУ набору подключённых выходов, поэтому двух
+# профилей с одинаковым набором быть не должно — сработал бы первый, а второй
+# молча не применялся бы. Скрипт поэтому не дописывает, а ЗАМЕНЯЕТ профиль с
+# тем же набором (и переиспользует его имя, если новое не задано явно).
+#
+# Идентификация выходов: встроенная панель — по имени порта (eDP-1 у неё
+# стабилен всегда), внешние — по «производитель модель серийник», чтобы монитор
+# опознавался в любом порту, а не только в том, где его настроили.
+#
+# Использование:
+#   display-setup             — открыть GUI; по закрытию окна сохранить профиль
+#   display-setup save [имя]  — сохранить текущую раскладку, не открывая GUI
+#   display-setup list        — показать профили в конфиге kanshi
+#
+# Откат, если раскладка уехала и экрана нет: Ctrl+Alt+F3 (TTY) или ssh, затем
+#   pkill -x kanshi && swaymsg output '*' enable
+
+set -euo pipefail
+
+KANSHI_CONFIG="${KANSHI_CONFIG:-$HOME/.config/kanshi/config}"
+
+# kanshictl в Debian/Ubuntu вырезан (тянет varlink, которого в архиве нет),
+# поэтому перечитать конфиг на лету нечем — только перезапуск процесса.
+restart_kanshi() {
+    if pkill -x kanshi 2>/dev/null; then
+        # Дать сокету освободиться, иначе новый инстанс стартует на занятом.
+        sleep 0.3
+    fi
+    setsid kanshi >/dev/null 2>&1 &
+    disown
+}
+
+save_profile() {
+    python3 - "$KANSHI_CONFIG" "${1-}" <<'PY'
+import json, os, re, subprocess, sys
+
+config_path, wanted_name = sys.argv[1], (sys.argv[2] if len(sys.argv) > 2 else "")
+
+outputs = json.loads(subprocess.run(
+    ["swaymsg", "-t", "get_outputs", "-r"],
+    capture_output=True, text=True, check=True).stdout)
+
+if not outputs:
+    sys.exit("Нет ни одного выхода — sway ничего не отдал.")
+if not any(o["active"] for o in outputs):
+    sys.exit("Все выходы выключены: такой профиль оставил бы без изображения. "
+             "Не сохраняю.")
+
+BUILTIN = ("eDP-", "LVDS-", "DSI-")
+
+
+def ident(o):
+    """Как kanshi опознаёт выход: имя порта либо 'make model serial'."""
+    if o["name"].startswith(BUILTIN):
+        return o["name"]
+    return " ".join((o.get(k) or "Unknown").strip() for k in ("make", "model", "serial"))
+
+
+def output_line(o):
+    q = '"%s"' % ident(o)
+    if not o["active"]:
+        return "    output %s disable" % q
+    m = o["current_mode"]
+    # refresh приходит в милигерцах: 59999 -> 59.999
+    rate = ("%.3f" % (m["refresh"] / 1000)).rstrip("0").rstrip(".")
+    bits = ["output %s enable" % q,
+            "mode %dx%d@%sHz" % (m["width"], m["height"], rate),
+            "position %d,%d" % (o["rect"]["x"], o["rect"]["y"]),
+            "scale %g" % o["scale"]]
+    if o.get("transform", "normal") != "normal":
+        bits.append("transform %s" % o["transform"])
+    return "    " + " ".join(bits)
+
+
+def short(o):
+    if o["name"].startswith(BUILTIN):
+        return "laptop"
+    model = (o.get("model") or "").strip()
+    # Модель вида 0x854A — это не имя, а сырой EDID-код; толку в названии нет.
+    if model and not re.fullmatch(r"0x[0-9A-Fa-f]+", model):
+        return re.sub(r"[^0-9A-Za-z]+", "-", model).strip("-")
+    return o["name"]
+
+
+current_set = frozenset(ident(o) for o in outputs)
+
+text = ""
+if os.path.exists(config_path):
+    with open(config_path) as f:
+        text = f.read()
+lines = text.splitlines()
+
+# Разбор профилей. Формат простой: `profile [имя] {` ... `}`, поэтому хватает
+# счётчика скобок — полноценный парсер scfg тут не нужен.
+blocks = []
+i = 0
+while i < len(lines):
+    m = re.match(r'\s*profile\b\s*(?:"([^"]*)"|([^\s{]+))?\s*\{', lines[i])
+    if not m:
+        i += 1
+        continue
+    start, depth, name = i, 0, (m.group(1) or m.group(2) or "")
+    members = set()
+    while i < len(lines):
+        depth += lines[i].count("{") - lines[i].count("}")
+        om = re.match(r'\s*output\s+(?:"([^"]*)"|([^\s]+))', lines[i])
+        if om:
+            members.add(om.group(1) or om.group(2))
+        if depth <= 0:
+            break
+        i += 1
+    blocks.append({"start": start, "end": i, "name": name, "members": frozenset(members)})
+    i += 1
+
+clash = [b for b in blocks if b["members"] == current_set]
+name = wanted_name or (clash[0]["name"] if clash and clash[0]["name"] else "")
+if not name:
+    name = "+".join(short(o) for o in outputs)
+name = re.sub(r"[^0-9A-Za-z+._-]+", "-", name).strip("-+") or "profile"
+
+# Вырезаем профили с тем же набором выходов — с конца, чтобы индексы не поехали.
+kept = lines[:]
+for b in sorted(clash, key=lambda b: b["start"], reverse=True):
+    del kept[b["start"]:b["end"] + 1]
+
+body = [output_line(o) for o in outputs]
+block = ["profile %s {" % name] + body + ["}"]
+
+while kept and not kept[-1].strip():
+    kept.pop()
+if kept:
+    kept.append("")
+result = "\n".join(kept + block) + "\n"
+
+os.makedirs(os.path.dirname(config_path), exist_ok=True)
+# Пишем по разыменованному пути: конфиг — симлинк в ~/.dotfiles, и подмена
+# файла целиком (tmp + rename) превратила бы его в обычный файл вне репы.
+with open(config_path, "w") as f:
+    f.write(result)
+
+print("%s профиль %s:" % ("Обновлён" if clash else "Добавлен", name))
+for line in body:
+    print(line)
+PY
+}
+
+case "${1-}" in
+    save)
+        shift
+        save_profile "${1-}"
+        restart_kanshi
+        ;;
+    list)
+        grep -nE '^\s*(profile|\s+output)' "$KANSHI_CONFIG" 2>/dev/null \
+            || echo "Профилей пока нет: $KANSHI_CONFIG"
+        ;;
+    -h | --help)
+        sed -n '2,/^set -euo/p' "$0" | sed 's/^# \?//; $d'
+        ;;
+    "")
+        # -n 9: столов в sway девять, дефолтные восемь обрезали бы список.
+        # Раскладка применяется в живой сессии, снимаем её после закрытия окна.
+        nwg-displays -n 9 -o "${XDG_RUNTIME_DIR:-/tmp}/nwg-displays-outputs"
+        save_profile
+        restart_kanshi
+        ;;
+    *)
+        echo "Неизвестная команда: $1 (см. display-setup --help)" >&2
+        exit 1
+        ;;
+esac

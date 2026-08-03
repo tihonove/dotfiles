@@ -1,0 +1,7 @@
+X-Repolib-Name: Tailscale
+Types: deb
+URIs: https://pkgs.tailscale.com/stable/ubuntu
+Suites: resolute
+Components: main
+Architectures: arm64
+Signed-By: /usr/share/keyrings/tailscale-archive-keyring.gpg

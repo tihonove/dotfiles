@@ -17,6 +17,8 @@
 #     поэтому ниже отдельно переключается Adwaita <-> Adwaita-dark. Вживую.
 #   GTK3 под XWayland и всё, что портал игнорирует — settings.ini, читается
 #     только при старте приложения.
+#   sway, kitty, waybar, wofi — портала не знают вовсе, им тему раздаёт режим
+#     refresh (см. ниже). Цвета обеих палитр живут в theme-colors.
 #
 # Портальный бэкенд под sway выбирается через ~/.config/xdg-desktop-portal/
 # sway-portals.conf (default=gtk) — без него Settings отдавал бы пустоту.
@@ -26,11 +28,25 @@
 #   theme-toggle dark|light — выставить явно
 #   theme-toggle status     — JSON для waybar (custom/theme)
 #   theme-toggle get        — dark|light
+#   theme-toggle refresh    — заново применить текущую тему к sway/kitty/waybar/wofi
+#                             (зовётся сам из apply и из exec_always в конфиге sway)
 
 set -euo pipefail
 
 IFACE=org.gnome.desktop.interface
 WAYBAR_SIGNAL=RTMIN+8
+
+COLORS="$HOME/.local/bin/theme-colors"
+
+# Производное от gsettings, в git ничего из этого нет — пишет refresh.
+#
+# У панели палитра лежит отдельным файлом и подключается @import'ом из style.css,
+# а лаунчеру стиль собирается целиком: он грузит css через load_from_data, без
+# базового пути, и относительный @import у него не резолвится (подробности — в
+# шапке style.css.in).
+WAYBAR_CSS="$HOME/.config/waybar/colors.css"
+WOFI_STYLE_IN="$HOME/.config/wofi/style.css.in"
+WOFI_STYLE="$HOME/.config/wofi/style.css"
 
 # Темы GTK3. Если однажды поставишь другую пару — менять тут.
 GTK_LIGHT=Adwaita
@@ -61,6 +77,47 @@ patch_settings_ini() {
     done
 }
 
+# Раздать текущую тему тем, кто портал не читает. Ничего не переключает — только
+# приводит в соответствие с gsettings, поэтому безопасно звать сколько угодно раз.
+refresh() {
+    # sway: цвета — обычные команды рантайма, шлём построчно. `swaymsg reload`
+    # был бы короче, но он перевыполняет exec_always, а там pkill waybar и pkill
+    # kanshi: моргала бы панель и заново применялся профиль мониторов.
+    if [[ -n "${SWAYSOCK:-}" ]] && command -v swaymsg >/dev/null; then
+        while IFS= read -r line; do
+            [[ -n "$line" ]] && swaymsg -q -- "$line"
+        done < <("$COLORS" sway)
+    fi
+
+    # kitty: SIGUSR1 — перечитать конфиг. geninclude в kitty.conf заново спросит
+    # палитру, цвета применятся к уже открытым окнам (и приложениям внутри уйдёт
+    # уведомление о смене light/dark, если они на него подписаны).
+    #
+    # -x: под --single-instance GUI-процесс ровно один, а по подстроке сигнал
+    # прилетел бы и вспомогательным kitten'ам.
+    pkill -USR1 -x kitty 2>/dev/null || true
+
+    # waybar и wofi: GTK-CSS генератор запускать не умеет, только читать файл.
+    #
+    # Пишем атомарно, через временный файл рядом и mv: читатель никогда не
+    # увидит наполовину записанный стиль.
+    write_atomic() {
+        local dest="$1" tmp="$1.tmp.$$"
+        cat >"$tmp" && mv -f "$tmp" "$dest"
+    }
+    "$COLORS" css | write_atomic "$WAYBAR_CSS"
+    { "$COLORS" css; cat "$WOFI_STYLE_IN"; } | write_atomic "$WOFI_STYLE"
+
+    # Лаунчеру этого достаточно: он живёт секунду и перечитает стиль сам при
+    # следующем запуске. Панели нужен пинок — SIGUSR2, её штатный reload.
+    #
+    # Почему не `reload_style_on_change` в config.jsonc, который перечитывает
+    # стиль сам: панель всё равно моргает (reload пересобирает бары в обоих
+    # случаях), а зоны клика после него разъезжались — вся панель начинала
+    # работать как один модуль. Подробности — ~/.system-setup/theme-light-dark.md
+    pkill -USR2 -x waybar 2>/dev/null || true
+}
+
 apply() {
     local mode="$1" scheme gtk prefer_dark
     if [[ "$mode" == dark ]]; then
@@ -81,6 +138,8 @@ apply() {
         systemctl --user set-environment QT_QPA_PLATFORMTHEME=gtk3 2>/dev/null || true
 
     pkill -"$WAYBAR_SIGNAL" waybar 2>/dev/null || true
+
+    refresh
 }
 
 case "${1:-toggle}" in
@@ -92,6 +151,9 @@ case "${1:-toggle}" in
         ;;
     get)
         current
+        ;;
+    refresh)
+        refresh
         ;;
     status)
         # Иконки Nerd Font заданы кодами, а не сырыми символами: так строка
@@ -106,7 +168,7 @@ case "${1:-toggle}" in
         fi
         ;;
     *)
-        echo "usage: ${0##*/} [toggle|dark|light|get|status]" >&2
+        echo "usage: ${0##*/} [toggle|dark|light|get|status|refresh]" >&2
         exit 2
         ;;
 esac

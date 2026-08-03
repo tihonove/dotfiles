@@ -9,12 +9,16 @@
 
 ### Переменные
 set $mod Mod4
-set $term /usr/bin/kitty
+# --single-instance: все окна обслуживает один процесс kitty. Без него каждое
+# окно — независимый инстанс (свой питон, кэши глифов, GPU-контекст + хелпер
+# kitten __atexit__), ~110-125 МБ на окно. Разбор: ~/.system-setup/kitty-single-instance-memory.md
+set $term /usr/bin/kitty --single-instance
 # Chrome нативным Wayland (ozone сам выберет wayland при наличии WAYLAND_DISPLAY).
 set $browser google-chrome-stable --ozone-platform-hint=auto
-# Лаунчер. В старом конфиге был fuzzel, но его не ставили — wofi уже в системе
-# и умеет то же самое.
-set $menu wofi --show drun
+# Лаунчер. В старом конфиге был fuzzel, но его не ставили; взят wofi — умеет
+# то же самое. Режим (drun) и оформление живут в ~/.config/wofi/, чтобы голый
+# `wofi` из терминала вёл себя как бинд, — отсюда здесь просто имя.
+set $menu wofi
 set $left h
 set $down j
 set $up k
@@ -40,6 +44,14 @@ seat seat0 xcursor_theme Adwaita 24
 
 ### Мониторы
 # Панель ноута — eDP-1, внешние выходы — DP-1/DP-2.
+#
+# Раскладкой заведует kanshi (демон в «Автозапуске» ниже), а не output-блоки
+# здесь: sway описывает мониторы поодиночке и про их комбинации не знает, то
+# есть «воткнут внешний — погасить eDP-1» в его синтаксисе не выражается.
+# Профили — ~/.config/kanshi/config, пишет их $mod+P (см. «Клавиши — запуск»).
+#
+# Фон — дефолт тёмной темы, как и client.* ниже: на светлой его перекрывает
+# `theme-toggle refresh` из «Автозапуска».
 output * bg #1e1e2e solid_color
 
 ### Внешний вид
@@ -52,6 +64,12 @@ gaps outer 2
 # «JetBrains Mono» в системе нет и pango молча подобрал бы что попало.
 font pango:JetBrainsMono Nerd Font 10
 # Тема Catppuccin Mocha: border | background | text | indicator | child_border
+#
+# Это ДЕФОЛТ, которым сессия окрашена до того, как отработают exec'и. Если стоит
+# светлая тема, ниже `theme-toggle refresh` перекроет эти строки палитрой Latte
+# — теми же командами через swaymsg, без reload. Значения совпадают с выводом
+# `theme-colors sway dark`; менять цвета надо там, тут — только чтобы стартовый
+# кадр не мигал.
 client.focused          #89b4fa #1e1e2e #cdd6f4 #b4befe #89b4fa
 client.focused_inactive #45475a #1e1e2e #a6adc8 #45475a #45475a
 client.unfocused        #313244 #1e1e2e #6c7086 #313244 #313244
@@ -59,22 +77,53 @@ client.urgent           #f38ba8 #1e1e2e #1e1e2e #f38ba8 #f38ba8
 client.placeholder      #1e1e2e #1e1e2e #cdd6f4 #1e1e2e #1e1e2e
 client.background       #1e1e2e
 
+### Правила окон
+# bluetuith (TUI-менеджер Bluetooth). Запускается из лаунчера — запись
+# ~/.local/share/applications/bluetuith.desktop поднимает его в kitty с
+# app_id=bluetuith, отсюда критерий. Всплывает по центру плавающим, а не влезает
+# в тайлинг рабочего стола: заглянуть в наушники и закрыть.
+# Блочная форма for_window в sway не поддерживается — команды через запятую.
+for_window [app_id="bluetuith"] floating enable, resize set 900 600, move position center
+for_window [app_id="^chrome-.*"] border none
+
 ### Автозапуск
 # Прокинуть переменные сессии в dbus/systemd — нужно панели и порталам.
 exec_always dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway XCURSOR_THEME XCURSOR_SIZE
-# Панель: конфиг в ~/.config/waybar/. Свой бар sway не нужен.
+# Светлая/тёмная тема + панель, одной цепочкой.
+#
+# refresh применяет к сессии текущую тему из gsettings: шлёт sway цвета через
+# swaymsg (конфиг статичен и знает только тёмные), будит kitty сигналом и
+# генерирует colors.css для waybar и wofi.
+#
+# Почему в одной строке с панелью, а не отдельным exec_always: exec'и sway
+# запускаются ПАРАЛЛЕЛЬНО, порядок строк ничего не гарантирует, а waybar без
+# colors.css не просто теряет стиль — он падает, `@import` несуществующего файла
+# ломает разбор всего style.css. В git этого файла нет (производное состояние),
+# на свежей машине его создаёт как раз refresh. Цепочка через ; — единственный
+# способ гарантировать, что панель стартует уже с палитрой.
 #
 # exec_always, а не exec: `exec` отрабатывает только при старте сессии, и после
-# $mod+Shift+C панель бы не вернулась. pkill перед запуском — чтобы reload не
-# плодил вторую копию поверх первой.
-exec_always sh -c 'pkill -x waybar; exec waybar'
+# $mod+Shift+C ни панель, ни тема бы не вернулись (reload вернул бы тёмные
+# client.* из этого файла). pkill перед запуском — чтобы reload не плодил вторую
+# копию панели поверх первой.
+exec_always sh -c 'pkill -x waybar; $HOME/.local/bin/theme-toggle refresh; exec waybar'
 # Стартовать с терминала — заодно страховка, пока биндов почти нет.
 exec $term
+# Мониторы: применяет профиль под текущий набор выходов и следит за hotplug.
+# kanshictl в Ubuntu вырезан (тянет varlink), перечитать конфиг на лету нечем —
+# отсюда pkill + перезапуск, он же спасает от второй копии после reload.
+#
+# Если раскладка уедет и экрана не станет: Ctrl+Alt+F3 (TTY) или ssh, затем
+#   pkill -x kanshi && swaymsg output '*' enable
+# — и удалить эту строку; без неё всё возвращается к штатному поведению sway.
+exec_always sh -c 'pkill -x kanshi; exec kanshi'
 
 ### Клавиши — запуск
 bindsym --to-code $mod+Return   exec $term
 bindsym --to-code $mod+b        exec $browser
 bindsym --to-code $mod+d        exec $menu
+# Мониторы: GUI-раскладка мышью, по закрытию окна набор запоминается профилем.
+bindsym --to-code $mod+p        exec display-setup
 bindsym --to-code $mod+Shift+q  kill
 
 ### Клавиши — управление sway
