@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+# Переключение светлой/тёмной темы для всего десктопа.
+#
+# Источник правды — gsettings (org.gnome.desktop.interface). Дальше цепочка:
+#
+#   gsettings ──> dconf ──> xdg-desktop-portal-gtk
+#                              └─> org.freedesktop.portal.Settings
+#                                  ключ org.freedesktop.appearance/color-scheme
+#
+# Кто что читает:
+#   Chrome/Brave/Edge/Vivaldi/Opera, Electron (VSCode) — портал, color-scheme.
+#     Реагируют вживую, перезапуск не нужен. В Chrome тема оформления должна
+#     стоять "GTK"/системная (chrome://settings/appearance), иначе поменяется
+#     только prefers-color-scheme у сайтов, а рамки останутся как были.
+#   GTK4/libadwaita — портал, color-scheme. Вживую.
+#   GTK3 под Wayland — портал, но ключ gtk-theme (color-scheme он не знает),
+#     поэтому ниже отдельно переключается Adwaita <-> Adwaita-dark. Вживую.
+#   GTK3 под XWayland и всё, что портал игнорирует — settings.ini, читается
+#     только при старте приложения.
+#   sway, kitty, waybar, wofi — портала не знают вовсе, им тему раздаёт режим
+#     refresh (см. ниже). Цвета обеих палитр живут в theme-colors.
+#
+# Портальный бэкенд под sway выбирается через ~/.config/xdg-desktop-portal/
+# sway-portals.conf (default=gtk) — без него Settings отдавал бы пустоту.
+#
+# Использование:
+#   theme-toggle            — переключить
+#   theme-toggle dark|light — выставить явно
+#   theme-toggle status     — JSON для waybar (custom/theme)
+#   theme-toggle get        — dark|light
+#   theme-toggle refresh    — заново применить текущую тему к sway/kitty/waybar/wofi
+#                             (зовётся сам из apply и из exec_always в конфиге sway)
+
+set -euo pipefail
+
+IFACE=org.gnome.desktop.interface
+WAYBAR_SIGNAL=RTMIN+8
+
+COLORS="$HOME/.local/bin/theme-colors"
+
+# Производное от gsettings, в git ничего из этого нет — пишет refresh.
+#
+# У панели палитра лежит отдельным файлом и подключается @import'ом из style.css,
+# а лаунчеру стиль собирается целиком: он грузит css через load_from_data, без
+# базового пути, и относительный @import у него не резолвится (подробности — в
+# шапке style.css.in).
+WAYBAR_CSS="$HOME/.config/waybar/colors.css"
+WOFI_STYLE_IN="$HOME/.config/wofi/style.css.in"
+WOFI_STYLE="$HOME/.config/wofi/style.css"
+
+# Темы GTK3. Если однажды поставишь другую пару — менять тут.
+GTK_LIGHT=Adwaita
+GTK_DARK=Adwaita-dark
+
+current() {
+    case "$(gsettings get "$IFACE" color-scheme)" in
+        *prefer-dark*) echo dark ;;
+        *)             echo light ;;
+    esac
+}
+
+# settings.ini не перезаписываем целиком: там могут лежать шрифты, DPI и прочее.
+# Правим/добавляем только две строки в секции [Settings].
+patch_settings_ini() {
+    local file="$1" theme="$2" prefer_dark="$3"
+    mkdir -p "$(dirname "$file")"
+    [[ -f "$file" ]] || printf '[Settings]\n' >"$file"
+    grep -q '^\[Settings\]' "$file" || printf '[Settings]\n' >>"$file"
+
+    local key
+    for key in "gtk-theme-name=$theme" "gtk-application-prefer-dark-theme=$prefer_dark"; do
+        if grep -q "^${key%%=*}=" "$file"; then
+            sed -i "s|^${key%%=*}=.*|$key|" "$file"
+        else
+            sed -i "0,/^\[Settings\]/s|^\[Settings\]|[Settings]\n$key|" "$file"
+        fi
+    done
+}
+
+# Раздать текущую тему тем, кто портал не читает. Ничего не переключает — только
+# приводит в соответствие с gsettings, поэтому безопасно звать сколько угодно раз.
+refresh() {
+    # sway: цвета — обычные команды рантайма, шлём построчно. `swaymsg reload`
+    # был бы короче, но он перевыполняет exec_always, а там pkill waybar и pkill
+    # kanshi: моргала бы панель и заново применялся профиль мониторов.
+    if [[ -n "${SWAYSOCK:-}" ]] && command -v swaymsg >/dev/null; then
+        while IFS= read -r line; do
+            [[ -n "$line" ]] && swaymsg -q -- "$line"
+        done < <("$COLORS" sway)
+    fi
+
+    # kitty: SIGUSR1 — перечитать конфиг. geninclude в kitty.conf заново спросит
+    # палитру, цвета применятся к уже открытым окнам (и приложениям внутри уйдёт
+    # уведомление о смене light/dark, если они на него подписаны).
+    #
+    # -x: под --single-instance GUI-процесс ровно один, а по подстроке сигнал
+    # прилетел бы и вспомогательным kitten'ам.
+    pkill -USR1 -x kitty 2>/dev/null || true
+
+    # waybar и wofi: GTK-CSS генератор запускать не умеет, только читать файл.
+    #
+    # Пишем атомарно, через временный файл рядом и mv: читатель никогда не
+    # увидит наполовину записанный стиль.
+    write_atomic() {
+        local dest="$1" tmp="$1.tmp.$$"
+        cat >"$tmp" && mv -f "$tmp" "$dest"
+    }
+    "$COLORS" css | write_atomic "$WAYBAR_CSS"
+    { "$COLORS" css; cat "$WOFI_STYLE_IN"; } | write_atomic "$WOFI_STYLE"
+
+    # Лаунчеру этого достаточно: он живёт секунду и перечитает стиль сам при
+    # следующем запуске. Панели нужен пинок — SIGUSR2, её штатный reload.
+    #
+    # Почему не `reload_style_on_change` в config.jsonc, который перечитывает
+    # стиль сам: панель всё равно моргает (reload пересобирает бары в обоих
+    # случаях), а зоны клика после него разъезжались — вся панель начинала
+    # работать как один модуль. Подробности — ~/.system-setup/theme-light-dark.md
+    pkill -USR2 -x waybar 2>/dev/null || true
+}
+
+apply() {
+    local mode="$1" scheme gtk prefer_dark
+    if [[ "$mode" == dark ]]; then
+        scheme=prefer-dark; gtk=$GTK_DARK; prefer_dark=1
+    else
+        scheme=prefer-light; gtk=$GTK_LIGHT; prefer_dark=0
+    fi
+
+    gsettings set "$IFACE" color-scheme "$scheme"
+    gsettings set "$IFACE" gtk-theme "$gtk"
+
+    patch_settings_ini "$HOME/.config/gtk-3.0/settings.ini" "$gtk" "$prefer_dark"
+    patch_settings_ini "$HOME/.config/gtk-4.0/settings.ini" "$gtk" "$prefer_dark"
+
+    # Qt-приложений тут пока нет, но переменная бесплатная и подхватится
+    # теми, что запустятся из сессии позже.
+    command -v systemctl >/dev/null &&
+        systemctl --user set-environment QT_QPA_PLATFORMTHEME=gtk3 2>/dev/null || true
+
+    pkill -"$WAYBAR_SIGNAL" waybar 2>/dev/null || true
+
+    refresh
+}
+
+case "${1:-toggle}" in
+    toggle)
+        [[ "$(current)" == dark ]] && apply light || apply dark
+        ;;
+    dark|light)
+        apply "$1"
+        ;;
+    get)
+        current
+        ;;
+    refresh)
+        refresh
+        ;;
+    status)
+        # Иконки Nerd Font заданы кодами, а не сырыми символами: так строка
+        # переживает любой редактор и копипасту, где глиф из Private Use Area
+        # легко превращается в пустоту.
+        if [[ "$(current)" == dark ]]; then
+            printf '{"text":"%s","alt":"dark","class":"dark","tooltip":"Тёмная тема — клик переключит на светлую"}\n' \
+                "$(printf '')"   # nf-fa-moon_o
+        else
+            printf '{"text":"%s","alt":"light","class":"light","tooltip":"Светлая тема — клик переключит на тёмную"}\n' \
+                "$(printf '')"   # nf-fa-sun_o
+        fi
+        ;;
+    *)
+        echo "usage: ${0##*/} [toggle|dark|light|get|status|refresh]" >&2
+        exit 2
+        ;;
+esac

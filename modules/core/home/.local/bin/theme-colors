@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# Палитра сессии: Catppuccin Mocha (тёмная) / Latte (светлая).
+#
+# Единственное место, где лежат сами цвета. Скрипт смотрит, какая тема стоит
+# сейчас (тот же gsettings, что и у theme-toggle), и печатает готовый кусок
+# конфига для запрошенного потребителя:
+#
+#   theme-colors kitty   — строки kitty.conf; kitty зовёт скрипт сам, через
+#                          `geninclude theme.sh` (обёртка нужна, потому что
+#                          geninclude вызывает программу без аргументов)
+#   theme-colors sway    — команды client.*/output; theme-toggle refresh скармливает
+#                          их swaymsg построчно, живому sway, без reload
+#   theme-colors css     — блок @define-color для waybar и wofi; у GTK-CSS
+#                          генератора нет, поэтому единственное место, где
+#                          результат ложится на диск файлом (см. theme-toggle refresh)
+#
+# Вторым аргументом можно задать тему явно — удобно, чтобы сравнить два вывода,
+# не переключая сессию: `diff <(theme-colors css dark) <(theme-colors css light)`.
+#
+# Значения Latte сняты с upstream: kitten themes --dump-theme Catppuccin-Latte.
+
+set -euo pipefail
+
+# ── Палитры ───────────────────────────────────────────────────────────────────
+# Роли одинаковые в обеих, отличаются только значения. Всё, что ниже, обращается
+# к цветам ТОЛЬКО по имени роли — так светлая тема получается переносом один в
+# один, без ручного подбора.
+#
+# Порядок ролей — от акцентов к фонам, как в оригинальной палитре Catppuccin:
+# base — фон, mantle/crust — на тон глубже (в Latte, наоборот, светлее),
+# surface* — плашки, overlay* — приглушённый текст, subtext*/text — текст.
+
+declare -A MOCHA=(
+    [rosewater]=#f5e0dc [flamingo]=#f2cdcd [pink]=#f5c2e7  [mauve]=#cba6f7
+    [red]=#f38ba8       [maroon]=#eba0ac   [peach]=#fab387 [yellow]=#f9e2af
+    [green]=#a6e3a1     [teal]=#94e2d5     [sky]=#89dceb   [sapphire]=#74c7ec
+    [blue]=#89b4fa      [lavender]=#b4befe
+    [text]=#cdd6f4      [subtext1]=#bac2de [subtext0]=#a6adc8
+    [overlay2]=#9399b2  [overlay1]=#7f849c [overlay0]=#6c7086
+    [surface2]=#585b70  [surface1]=#45475a [surface0]=#313244
+    [base]=#1e1e2e      [mantle]=#181825   [crust]=#11111b
+)
+
+declare -A LATTE=(
+    [rosewater]=#dc8a78 [flamingo]=#dd7878 [pink]=#ea76cb  [mauve]=#8839ef
+    [red]=#d20f39       [maroon]=#e64553   [peach]=#fe640b [yellow]=#df8e1d
+    [green]=#40a02b     [teal]=#179299     [sky]=#04a5e5   [sapphire]=#209fb5
+    [blue]=#1e66f5      [lavender]=#7287fd
+    [text]=#4c4f69      [subtext1]=#5c5f77 [subtext0]=#6c6f85
+    [overlay2]=#7c7f93  [overlay1]=#8c8fa1 [overlay0]=#9ca0b0
+    [surface2]=#acb0be  [surface1]=#bcc0cc [surface0]=#ccd0da
+    [base]=#eff1f5      [mantle]=#e6e9ef   [crust]=#dce0e8
+)
+
+# Порядок ролей для вывода css — руками, а не по ключам массива: у ассоциативных
+# массивов bash порядок хэшевый, а файл читают глазами.
+ROLES=(
+    rosewater flamingo pink mauve red maroon peach yellow green teal sky sapphire
+    blue lavender text subtext1 subtext0 overlay2 overlay1 overlay0
+    surface2 surface1 surface0 base mantle crust
+)
+
+# ── Текущая тема ──────────────────────────────────────────────────────────────
+# Источник правды — тот же ключ, что ставит theme-toggle. Читаем его напрямую, а
+# не через `theme-toggle get`: скрипты не должны звать друг друга по кругу.
+
+current_mode() {
+    case "$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null)" in
+        *prefer-dark*) echo dark ;;
+        *)             echo light ;;
+    esac
+}
+
+# ── Вывод ─────────────────────────────────────────────────────────────────────
+
+emit_kitty() {
+    # Чёрный и белый из ANSI-16 — единственное место, где две темы расходятся не
+    # значениями, а ролями. В тёмной «чёрный» берётся из плашек (surface), а
+    # «белый» из текста (subtext); в светлой ровно наоборот, иначе ANSI-чёрный
+    # оказался бы светлее фона. Так же это сделано в обеих upstream-темах.
+    local ansi_black ansi_black_br ansi_white ansi_white_br
+    if [[ "$mode" == dark ]]; then
+        ansi_black=${C[surface1]}  ansi_black_br=${C[surface2]}
+        ansi_white=${C[subtext1]}  ansi_white_br=${C[subtext0]}
+    else
+        ansi_black=${C[subtext1]}  ansi_black_br=${C[subtext0]}
+        ansi_white=${C[surface2]}  ansi_white_br=${C[surface1]}
+    fi
+
+    cat <<EOF
+# Catppuccin ${theme_name}. Сгенерировано theme-colors, руками не править.
+
+foreground              ${C[text]}
+background              ${C[base]}
+selection_foreground    ${C[base]}
+selection_background    ${C[rosewater]}
+
+# Курсор
+cursor                  ${C[rosewater]}
+cursor_text_color       ${C[base]}
+
+# Ссылка под мышью
+url_color               ${C[rosewater]}
+
+# Рамки окон kitty
+active_border_color     ${C[lavender]}
+inactive_border_color   ${C[overlay0]}
+bell_border_color       ${C[yellow]}
+
+# Полоса вкладок
+active_tab_foreground   ${C[crust]}
+active_tab_background   ${C[mauve]}
+inactive_tab_foreground ${C[text]}
+inactive_tab_background ${C[mantle]}
+tab_bar_background      ${C[crust]}
+
+# 16 цветов терминала
+# black
+color0  $ansi_black
+color8  $ansi_black_br
+# red
+color1  ${C[red]}
+color9  ${C[red]}
+# green
+color2  ${C[green]}
+color10 ${C[green]}
+# yellow
+color3  ${C[yellow]}
+color11 ${C[yellow]}
+# blue
+color4  ${C[blue]}
+color12 ${C[blue]}
+# magenta
+color5  ${C[pink]}
+color13 ${C[pink]}
+# cyan
+color6  ${C[teal]}
+color14 ${C[teal]}
+# white
+color7  $ansi_white
+color15 $ansi_white_br
+EOF
+}
+
+emit_sway() {
+    # Ровно те же строки, что лежат в конфиге sway дефолтом, но с текущей
+    # палитрой. Комментариев и пустых строк тут нет намеренно: вывод построчно
+    # уходит в swaymsg, а он ждёт команды, а не конфиг.
+    #
+    # Порядок полей client.*: border | background | text | indicator | child_border
+    cat <<EOF
+client.focused          ${C[blue]} ${C[base]} ${C[text]} ${C[lavender]} ${C[blue]}
+client.focused_inactive ${C[surface1]} ${C[base]} ${C[subtext0]} ${C[surface1]} ${C[surface1]}
+client.unfocused        ${C[surface0]} ${C[base]} ${C[overlay0]} ${C[surface0]} ${C[surface0]}
+client.urgent           ${C[red]} ${C[base]} ${C[base]} ${C[red]} ${C[red]}
+client.placeholder      ${C[base]} ${C[base]} ${C[text]} ${C[base]} ${C[base]}
+client.background       ${C[base]}
+output * bg ${C[base]} solid_color
+EOF
+}
+
+emit_css() {
+    # Один и тот же файл подходит и waybar, и wofi: оба на GTK-CSS и оба
+    # обращаются к цветам через @имя-роли. Отдаём палитру целиком, а не только
+    # используемые роли, — чтобы в style.css можно было взять любой цвет, не
+    # трогая генератор.
+    echo "/* Catppuccin ${theme_name}. Сгенерировано theme-colors, руками не править."
+    echo "   Файл перезаписывает theme-toggle refresh; в git его нет. */"
+    local role
+    for role in "${ROLES[@]}"; do
+        printf '@define-color %-10s %s;\n' "$role" "${C[$role]}"
+    done
+}
+
+# ── Разбор аргументов ─────────────────────────────────────────────────────────
+
+target="${1:-}"
+mode="${2:-$(current_mode)}"
+
+case "$mode" in
+    dark)  theme_name=Mocha; declare -n SRC=MOCHA ;;
+    light) theme_name=Latte; declare -n SRC=LATTE ;;
+    *) echo "${0##*/}: неизвестная тема: $mode (dark|light)" >&2; exit 2 ;;
+esac
+
+# Копия с разыменованного nameref: дальше по коду обращаемся к ней как к C.
+declare -A C
+for role in "${!SRC[@]}"; do C[$role]=${SRC[$role]}; done
+
+case "$target" in
+    kitty) emit_kitty ;;
+    sway)  emit_sway ;;
+    css)   emit_css ;;
+    *)
+        echo "usage: ${0##*/} kitty|sway|css [dark|light]" >&2
+        exit 2
+        ;;
+esac

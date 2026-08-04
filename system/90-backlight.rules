@@ -1,0 +1,13 @@
+# Дать группе video писать яркость подсветки — чтобы brightnessctl работал
+# от обычного пользователя (биндинги XF86MonBrightness* в sway).
+#
+# Пакет brightnessctl в Ubuntu своих правил не кладёт, бинарник не setuid и не
+# слинкован с libsystemd, так что путь через logind тоже отпадает: без этого
+# правила он отвечает «You should run this program with root privileges».
+#
+# Ставится не симлинком, а копией — udev читает /etc/udev/rules.d от root:
+#   sudo install -m 644 system/90-backlight.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload && sudo udevadm trigger -s backlight
+#   sudo usermod -aG video "$USER"     # применится после релогина
+
+ACTION=="add", SUBSYSTEM=="backlight", RUN+="/bin/chgrp video /sys/class/backlight/%k/brightness", RUN+="/bin/chmod g+w /sys/class/backlight/%k/brightness"

@@ -1,0 +1,204 @@
+/*
+ * Панель — в тон рамкам sway и терминалу.
+ *
+ * От стокового стиля осталась только структура (отступы, hover, анимация
+ * критического заряда). Раскраска другая: там каждый модуль был плашкой
+ * ядрёного цвета, тут — общий фон base и акцент в тексте.
+ *
+ * Конкретных цветов в этом файле нет: они переключаются вместе со светлой/тёмной
+ * темой сессии. colors.css генерирует `theme-colors css`, а `theme-toggle
+ * refresh` после этого будит панель сигналом SIGUSR2. Сама она за файлом не
+ * следит намеренно — почему, написано в config.jsonc.
+ *
+ * Роли: base — фон, mantle/crust — на тон глубже, surface0/1/2 — плашки,
+ * overlay0 — приглушённое, subtext0 — второстепенный текст, text — основной,
+ * дальше акценты (blue, lavender, green, yellow, peach, red, mauve, teal…).
+ * Те же имена у wofi и kitty — палитра на всю сессию одна.
+ */
+
+@import url("colors.css");
+
+* {
+    /* Стоковый стиль просил FontAwesome — его в системе нет. Иконки модулей
+       живут в Nerd Font, который ставит update-tools.sh. */
+    font-family: "JetBrainsMono Nerd Font", sans-serif;
+    font-size: 13px;
+    min-height: 0;
+}
+
+window#waybar {
+    /* alpha() вместо rgba(): цвет приходит именем роли, прозрачность
+       накручиваем поверх — панель чуть просвечивает, как и лаунчер. */
+    background-color: alpha(@base, 0.92);
+    border-bottom: 2px solid @surface0;
+    color: @text;
+    transition-property: background-color;
+    transition-duration: .5s;
+}
+
+window#waybar.hidden {
+    opacity: 0.2;
+}
+
+button {
+    /* box-shadow вместо border, чтобы текст не съезжал */
+    box-shadow: inset 0 -2px transparent;
+    border: none;
+    border-radius: 0;
+}
+
+/* https://github.com/Alexays/Waybar/wiki/FAQ#the-workspace-buttons-have-a-strange-hover-effect */
+button:hover {
+    background: inherit;
+    box-shadow: inset 0 -2px @lavender;   /* как indicator у sway */
+}
+
+#workspaces button {
+    padding: 0 8px;
+    background-color: transparent;
+    color: @overlay0;                     /* как unfocused */
+}
+
+#workspaces button:hover {
+    background-color: @surface0;
+    color: @text;
+}
+
+#workspaces button.focused,
+#workspaces button.active {
+    background-color: @surface0;
+    color: @blue;                         /* как рамка focused */
+    box-shadow: inset 0 -2px @blue;
+}
+
+#workspaces button.urgent {
+    background-color: @red;
+    color: @base;
+}
+
+#mode {
+    background-color: @surface1;
+    color: @yellow;
+    box-shadow: inset 0 -2px @yellow;
+}
+
+#clock,
+#battery,
+#cpu,
+#memory,
+#temperature,
+#network,
+#pulseaudio,
+#language,
+#tray,
+#mode,
+#idle_inhibitor,
+#scratchpad,
+#custom-theme,
+#custom-power {
+    padding: 0 10px;
+    background-color: transparent;
+}
+
+/* ── Уплотнения ────────────────────────────────────────────────────────────── */
+
+/* Wifi + батарея + часы — один смысловой блок «связь, заряд, время», поэтому
+   швы внутри него уже, чем расстояние до соседей: 10+10 по краям превращаются
+   в 4+4 (плюс общий spacing: 4 из конфига). Снаружи блока — обычные 10. */
+#network { padding-right: 4px; }
+#battery { padding: 0 4px; }
+#clock   { padding-left: 4px; }
+
+/* Датчики в одной плашке. Внутри блока модули стоят вплотную (3px против
+   обычных 10 плюс обнулённые margin'ы), а padding самой плашки возвращает
+   воздух снаружи — три цифры читаются как один прибор. */
+#system {
+    background-color: @surface0;
+    border-radius: 4px;
+    padding: 0 4px;
+    margin: 3px 4px;
+}
+
+#system #cpu,
+#system #memory,
+#system #temperature {
+    padding: 0 3px;
+    margin: 0;
+}
+
+#window,
+#workspaces {
+    margin: 0 4px;
+}
+
+#window {
+    color: @subtext0;                     /* заголовок не должен орать */
+}
+
+/* Если workspaces — крайний слева модуль, левый отступ не нужен */
+.modules-left > widget:first-child > #workspaces {
+    margin-left: 0;
+}
+
+/* То же справа */
+.modules-right > widget:last-child > #workspaces {
+    margin-right: 0;
+}
+
+/* ── Акценты модулей ───────────────────────────────────────────────────────── */
+
+#idle_inhibitor           { color: @overlay0; }
+#idle_inhibitor.activated { color: @yellow; }
+
+#pulseaudio              { color: @yellow; }
+#pulseaudio.muted        { color: @overlay0; }
+
+#network                 { color: @blue; }
+#network.disconnected    { color: @red; }
+
+#cpu                     { color: @green; }
+#memory                  { color: @mauve; }
+#temperature             { color: @peach; }
+#temperature.critical    { color: @red; }
+
+#language                { color: @lavender; }
+#scratchpad              { color: @subtext0; }
+
+/* Луна на тёмной теме, солнце на светлой — цвет по смыслу иконки */
+#custom-theme.dark       { color: @lavender; }
+#custom-theme.light      { color: @yellow; }
+
+#clock                   { color: @text; }
+#custom-power            { color: @red; }
+#custom-power:hover      { background-color: @red; color: @base; }
+
+#battery                 { color: @green; }
+#battery.charging,
+#battery.plugged         { color: @teal; }
+#battery.warning:not(.charging) { color: @yellow; }
+
+@keyframes blink {
+    to {
+        background-color: @red;
+        color: @base;
+    }
+}
+
+/* steps() вместо linear — чтобы анимация не жгла cpu */
+#battery.critical:not(.charging) {
+    color: @red;
+    animation-name: blink;
+    animation-duration: 0.5s;
+    animation-timing-function: steps(12);
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+}
+
+#tray                    { background-color: transparent; }
+
+#tray > .passive         { -gtk-icon-effect: dim; }
+
+#tray > .needs-attention {
+    -gtk-icon-effect: highlight;
+    background-color: @red;
+}

@@ -1,0 +1,127 @@
+/*
+ * Лаунчер — та же палитра, что в client.* у sway, в waybar и в kitty. Стоковой
+ * темы у wofi нет вообще: без этого файла он рисуется дефолтной GTK-темой и в
+ * тёмной сессии выглядит инородно.
+ *
+ * ⚠ Это ШАБЛОН, а не рабочий файл. `theme-toggle refresh` склеивает его с
+ * палитрой (`theme-colors css`) в ~/.config/wofi/style.css — тот в git не лежит,
+ * править надо здесь.
+ *
+ * Почему склейка, а не `@import url("colors.css")`, как у waybar: wofi грузит
+ * стиль через gtk_css_provider_load_from_data, то есть БЕЗ базового пути.
+ * Относительный @import резолвить не от чего — GTK ищет файл относительно
+ * текущего каталога процесса, не находит и валится на разборе ВСЕГО стиля,
+ * после чего лаунчер рисуется дефолтной GTK-темой (насквозь прозрачным).
+ *
+ * Перечитывать на лету не нужно: wofi живёт секунду и берёт свежий файл при
+ * следующем запуске.
+ *
+ * Роли: base — фон, mantle — на тон глубже, surface0 — рамки и плашки,
+ * overlay0 — приглушённое, subtext0 — невыбранное, text — основной текст,
+ * blue — акцент фокуса.
+ *
+ * Селекторы wofi: #window #outer-box #input #scroll #inner-box #entry #text
+ */
+
+* {
+    /* Именно "monospace", а не имя семейства напрямую: алиас из
+       home/.config/fontconfig/fonts.conf уводит его на JetBrainsMono Nerd Font
+       Mono (NFM) — ровно то, что получает kitty, который тоже не задаёт
+       font_family. В системе лежат ОБА начертания, NF и NFM, и они не
+       взаимозаменяемы: у NFM Nerd-глифы ужаты в одну ячейку сетки. Waybar
+       просит NF сознательно — иконкам в панели ужатие ни к чему, — а лаунчер
+       показывает обычный текст рядом с терминалом, и разница в ширинах в нём
+       читается как «шрифт какой-то другой».
+
+       Заодно семейство поедет само, если поменять алиас в fonts.conf. */
+    font-family: monospace;
+    /* Крупнее панели (там 13px) намеренно: в панель смотрят краем глаза, а в
+       лаунчер — в упор, и висит он секунду.
+
+       В kitty размер задан в пунктах (дефолтные font_size 11.0), тут в
+       пикселях; при scale 1.0 те 11pt — это 11 * 96/72 ≈ 14.7px. То есть 14px
+       ниже почти совпадают с терминалом, для точности можно поставить 14.7.
+       Высота окна считается от lines, так что от размера шрифта она едет сама. */
+    font-size: 14px;
+}
+
+#window {
+    /* Непрозрачный намеренно: лаунчер висит поверх окон, и просвечивающий текст
+       под ним мешает читать список. У панели прозрачность уместна (она тонкая
+       полоса), тут — нет. */
+    background-color: @base;
+    border: 2px solid @surface0;                /* 2px — в тон default_border pixel 2 */
+    color: @text;
+}
+
+#outer-box {
+    padding: 8px;                               /* столько же, сколько gaps inner у sway */
+}
+
+/* Строка поиска */
+#input {
+    background-color: @mantle;                  /* на тон глубже фона */
+    border: none;
+    border-bottom: 2px solid @surface0;
+    border-radius: 0;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    color: @text;
+    caret-color: @blue;
+    outline: none;
+    box-shadow: none;
+}
+
+#input:focus {
+    border-bottom-color: @blue;                 /* единственная реакция на фокус */
+}
+
+/* Селектор image в GTK-CSS рисует иконку лупы внутри поля; она от темы и
+   в палитру не попадает — приглушаем. */
+#input image {
+    color: @overlay0;
+}
+
+#scroll {
+    margin: 0;
+}
+
+#inner-box {
+    background-color: transparent;
+}
+
+/* Записи */
+#entry {
+    padding: 6px 10px;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    color: @subtext0;                           /* невыбранное приглушено */
+}
+
+#entry:selected {
+    /* Ровно то же отношение, что у sway в client.focused: фон blue, текст base */
+    background-color: @blue;
+    color: @base;
+}
+
+#entry:selected #text {
+    color: @base;
+    font-weight: bold;
+}
+
+#text {
+    color: inherit;
+    padding: 0;
+    margin: 0;
+}
+
+/* Подпункты .desktop-записей (Actions): у Chrome это «New Window»,
+   «New Incognito Window». Отбиты отступом, чтобы читались как вложенные. */
+#expander-box {
+    padding-left: 12px;
+}
+
+#img {
+    padding-right: 8px;
+}

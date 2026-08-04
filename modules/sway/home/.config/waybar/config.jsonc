@@ -1,0 +1,225 @@
+// -*- mode: jsonc -*-
+// Панель. Порт стокового /etc/xdg/waybar/config.jsonc — модули те же, выкинуто
+// только то, для чего на этой машине нет ни демона, ни бинарника.
+{
+    "height": 30,
+    "spacing": 4,
+
+    // "reload_style_on_change": true НЕ ставить. Опция делает ровно то, что нужно
+    // при смене светлой/тёмной темы — следит за style.css и за @import'ами, а
+    // туда подключён генерируемый colors.css. Но выигрыша нет: панель всё равно
+    // моргает (reload пересобирает бары), зато после него разъезжались зоны
+    // клика — вся панель начинала работать как один модуль, клик в любое место
+    // переключал тему. Стиль обновляет `theme-toggle refresh` сигналом SIGUSR2.
+
+    "modules-left": [
+        "sway/workspaces",
+        "sway/mode",
+        "sway/scratchpad"
+    ],
+    "modules-center": [
+        "sway/window"
+    ],
+    // Порядок справа налево: ⏻, трей, часы, батарея, wifi, язык, тема, датчики.
+    // Часы+батарея стоят вплотную (см. отступы в style.css) — это один блок
+    // «сколько времени и надолго ли хватит»; cpu/mem/temp собраны в group,
+    // чтобы три цифры читались как один прибор, а не как три модуля.
+    "modules-right": [
+        "idle_inhibitor",
+        "pulseaudio",
+        "group/system",
+        "custom/theme",
+        "sway/language",
+        "network",
+        "battery",
+        "clock",
+        "tray",
+        "custom/power"
+    ],
+
+    // group рисует детей в одном GtkBox — общий фон и рамка вешаются на
+    // #system в style.css, а не на каждый модуль отдельно.
+    "group/system": {
+        "orientation": "horizontal",
+        "modules": [
+            "cpu",
+            "memory",
+            "temperature"
+        ]
+    },
+
+    // Выкинуто из стокового набора:
+    //   mpd                   — демона mpd нет
+    //   power-profiles-daemon — сервиса нет, модуль просто висел бы пустым
+    //   custom/media          — тянет playerctl и ~/.config/waybar/mediaplayer.py
+    //   battery#bat2          — батарея одна (qcom-battmgr-bat)
+    //   keyboard-state        — CapsLock перемаплен в Ctrl, показывать нечего
+    //   backlight             — панель и так широкая, яркость крутится клавишами
+
+    "sway/mode": {
+        "format": "<span style=\"italic\">{}</span>"
+    },
+
+    "sway/scratchpad": {
+        "format": "{icon} {count}",
+        "show-empty": false,
+        "format-icons": ["", ""],
+        "tooltip": true,
+        "tooltip-format": "{app}: {title}"
+    },
+
+    // Раскладка us/ru — переключается Win+Space (см. sway config).
+    "sway/language": {
+        "format": "{short}",
+        "tooltip-format": "{long}"
+    },
+
+    "idle_inhibitor": {
+        "format": "{icon}",
+        "format-icons": {
+            "activated": "",
+            "deactivated": ""
+        }
+    },
+
+    "tray": {
+        "spacing": 10
+    },
+
+    "clock": {
+        "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
+        "format-alt": "{:%Y-%m-%d}"
+    },
+
+    "cpu": {
+        "format": "{usage}% ",
+        "tooltip": false
+    },
+
+    "memory": {
+        "format": "{}% "
+    },
+
+    "temperature": {
+        // Зона 10 — cluster0-thermal, ближайшее к «температуре проца» на этом
+        // Qualcomm: отдельных thermal_zone на пакет тут нет, есть по ядру
+        // (cpu0..cpu7) и общая на кластер. Проверить после апдейта ядра:
+        //   for z in /sys/class/thermal/thermal_zone*; do
+        //       echo "$z $(cat $z/type)"; done | grep cluster
+        "thermal-zone": 10,
+        "critical-threshold": 80,
+        "format": "{temperatureC}°C {icon}",
+        "format-icons": ["", "", ""]
+    },
+
+    // Иконка — батарейка с делениями, шаг 10%: waybar сам делит 0..100 на длину
+    // массива, так что 11 элементов дают ровно шкалу outline/10/…/90/full.
+    // Пять стоковых FontAwesome-иконок для этого грубоваты: между «полная» и
+    // «половина» у них не было ничего, а тут заряд виден на глаз без чтения цифр.
+    //
+    // format-icons объектом: waybar ищет ключ по статусу (charging), потом по
+    // состоянию из states, потом default — поэтому у зарядки свой ряд глифов
+    // (с молнией) и format-charging уже не нужен отдельной строкой.
+    //
+    // Глифы — Material Design из Nerd Font: разряд U+F008E, F007A..F0082, F0079;
+    // зарядка U+F089F, F089C, F0086..F0088, F089D, F0089, F089E, F008A, F008B,
+    // F0085 (нумерация MD идёт не подряд, порядок именно такой — 0,10,…,100).
+    // Проверять правки codepoint'ами, а не глазами: пустой глиф выглядит как
+    // пробел и молча ломает шкалу.
+    "battery": {
+        "states": {
+            "warning": 30,
+            "critical": 15
+        },
+        "format": "{icon} {capacity}%",
+        "format-full": "{icon} {capacity}%",
+        "format-charging": "{icon} {capacity}%",
+        "format-plugged": "{icon} {capacity}%",
+        "format-alt": "{icon} {time}",
+        "format-icons": {
+            "charging": ["󰢟", "󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"],
+            "default":  ["󰂎", "󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
+        }
+    },
+
+    // Компактно: одна иконка — «палочки» по уровню сигнала, без SSID и процентов.
+    // format-icons идёт от слабого к сильному, waybar сам раскладывает
+    // signalStrength 0..100 по длине массива (man 5 waybar-network).
+    //
+    // Подробности не потеряны: они в тултипе, а клик (format-alt) разворачивает
+    // модуль в SSID с процентами и обратно.
+    //
+    // Иконки — Material Design из Nerd Font (U+F091F..U+F092F). Раньше тут были
+    // FontAwesome-глифы, но в файл они записались пустыми, и модуль показывал
+    // голый текст — если правишь эти строки, проверяй байты, а не глаза.
+    "network": {
+        "format-wifi": "{icon}",
+        "format-icons": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"],
+        "format-ethernet": "󰌘",
+        "format-linked": "󰤫",
+        "format-disconnected": "󰤮",
+        "format-alt": "{icon} {essid} {signalStrength}%",
+        "tooltip-format-wifi": "{essid}  {signalStrength}%\n{ifname}: {ipaddr}/{cidr}\nvia {gwaddr}",
+        "tooltip-format-ethernet": "{ifname}: {ipaddr}/{cidr}\nvia {gwaddr}",
+        "tooltip-format-disconnected": "Сеть отключена"
+    },
+
+    // Звуковой сервер тут pulseaudio (не pipewire), модуль его и слушает.
+    // on-click из стокового конфига убран: pavucontrol не установлен.
+    //
+    // {format_source} убран из всех format-строк: это громкость микрофона, и
+    // висела она вечными «100%» рядом с громкостью колонок — два числа подряд
+    // без подсказки, какое из них какое. Микрофон не крутится с этой панели,
+    // показывать его нечего; осталось «иконка + проценты», как у батареи.
+    //
+    // Глифы — Material Design из Nerd Font: volume low/medium/high U+F057F,
+    // F0580, F057E, mute U+F075F, наушники U+F02CB, гарнитура U+F02CD,
+    // телефон U+F011C, колонка U+F04C3, авто U+F010B. В стоковом конфиге здесь
+    // стояли FontAwesome-глифы, но в файл записались пустыми — иконки звука не
+    // было вообще. Правки проверять codepoint'ами, а не глазами.
+    "pulseaudio": {
+        "format": "{icon} {volume}%",
+        "format-bluetooth": "{icon} {volume}%",
+        "format-bluetooth-muted": "󰝟 {volume}%",
+        "format-muted": "󰝟 {volume}%",
+        "format-icons": {
+            "headphone": "󰋋",
+            "hands-free": "󰋎",
+            "headset": "󰋍",
+            "phone": "󰄜",
+            "portable": "󰓃",
+            "car": "󰄋",
+            "default": ["󰕿", "󰖀", "󰕾"]
+        }
+    },
+
+    // Светлая/тёмная тема. Скрипт дёргает gsettings, оттуда через
+    // xdg-desktop-portal тему видят Chrome, Electron и GTK — см. комментарий
+    // в ~/.local/bin/theme-toggle.
+    //
+    // interval "once" + signal: модуль сам не опрашивается, а перерисовывается
+    // по SIGRTMIN+8 — его шлёт сам скрипт, чтобы иконка менялась и когда тему
+    // переключают из терминала, а не только по клику.
+    "custom/theme": {
+        "format": "{}",
+        "return-type": "json",
+        "exec": "$HOME/.local/bin/theme-toggle status",
+        "on-click": "$HOME/.local/bin/theme-toggle toggle",
+        "interval": "once",
+        "signal": 8
+    },
+
+    // Меню выключения по клику. XML лежит в пакете waybar, не в репе.
+    "custom/power": {
+        "format": "⏻ ",
+        "tooltip": false,
+        "menu": "on-click",
+        "menu-file": "/usr/share/waybar/custom_modules/power_menu.xml",
+        "menu-actions": {
+            "shutdown": "shutdown",
+            "reboot": "reboot",
+            "suspend": "systemctl suspend",
+            "hibernate": "systemctl hibernate"
+        }
+    }
+}

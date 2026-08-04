@@ -1,0 +1,218 @@
+# vim:ft=swayconfig
+# ──────────────────────────────────────────────────────────────────────────────
+# Sway. Выбор сессии в GDM: шестерёнка ⚙ → «Sway».
+# Перезагрузить конфиг: $mod+Shift+C.
+#
+# Собирается заново, с нуля. Из старого конфига перенесены только базовые
+# настройки и панель; биндов пока намеренно почти нет — добавляем по одному.
+# ──────────────────────────────────────────────────────────────────────────────
+
+### Переменные
+set $mod Mod4
+# --single-instance: все окна обслуживает один процесс kitty. Без него каждое
+# окно — независимый инстанс (свой питон, кэши глифов, GPU-контекст + хелпер
+# kitten __atexit__), ~110-125 МБ на окно. Разбор: ~/.system-setup/kitty-single-instance-memory.md
+set $term /usr/bin/kitty --single-instance
+# Chrome нативным Wayland (ozone сам выберет wayland при наличии WAYLAND_DISPLAY).
+set $browser google-chrome-stable --ozone-platform-hint=auto
+# Лаунчер. В старом конфиге был fuzzel, но его не ставили; взят wofi — умеет
+# то же самое. Режим (drun) и оформление живут в ~/.config/wofi/, чтобы голый
+# `wofi` из терминала вёл себя как бинд, — отсюда здесь просто имя.
+set $menu wofi
+set $left h
+set $down j
+set $up k
+set $right l
+
+### Раскладка клавиатуры: US + Russian, переключение Win+Space
+input "type:keyboard" {
+    xkb_layout us,ru
+    xkb_options grp:win_space_toggle
+}
+
+### Тачпад: тап-клик и естественная прокрутка
+input "type:touchpad" {
+    tap enabled
+    natural_scroll enabled
+    dwt enabled
+}
+
+### Тема курсора. Без явной темы клиенты грузят "default", где нет resize-курсоров
+# (в VSCode/Electron пропадал курсор на границах панелей). Adwaita — полная, уже стоит.
+# seat также экспортирует XCURSOR_THEME/XCURSOR_SIZE дочерним клиентам.
+seat seat0 xcursor_theme Adwaita 24
+
+### Мониторы
+# Панель ноута — eDP-1, внешние выходы — DP-1/DP-2.
+#
+# Раскладкой заведует kanshi (демон в «Автозапуске» ниже), а не output-блоки
+# здесь: sway описывает мониторы поодиночке и про их комбинации не знает, то
+# есть «воткнут внешний — погасить eDP-1» в его синтаксисе не выражается.
+# Профили — ~/.config/kanshi/config, пишет их $mod+P (см. «Клавиши — запуск»).
+#
+# Фон — дефолт тёмной темы, как и client.* ниже: на светлой его перекрывает
+# `theme-toggle refresh` из «Автозапуска».
+output * bg #1e1e2e solid_color
+
+### Внешний вид
+default_border pixel 2
+default_floating_border pixel 2
+hide_edge_borders smart
+gaps inner 8
+gaps outer 2
+# Имя семейства именно такое: ставится патченый Nerd Font, обычного
+# «JetBrains Mono» в системе нет и pango молча подобрал бы что попало.
+font pango:JetBrainsMono Nerd Font 10
+# Тема Catppuccin Mocha: border | background | text | indicator | child_border
+#
+# Это ДЕФОЛТ, которым сессия окрашена до того, как отработают exec'и. Если стоит
+# светлая тема, ниже `theme-toggle refresh` перекроет эти строки палитрой Latte
+# — теми же командами через swaymsg, без reload. Значения совпадают с выводом
+# `theme-colors sway dark`; менять цвета надо там, тут — только чтобы стартовый
+# кадр не мигал.
+client.focused          #89b4fa #1e1e2e #cdd6f4 #b4befe #89b4fa
+client.focused_inactive #45475a #1e1e2e #a6adc8 #45475a #45475a
+client.unfocused        #313244 #1e1e2e #6c7086 #313244 #313244
+client.urgent           #f38ba8 #1e1e2e #1e1e2e #f38ba8 #f38ba8
+client.placeholder      #1e1e2e #1e1e2e #cdd6f4 #1e1e2e #1e1e2e
+client.background       #1e1e2e
+
+### Правила окон
+# bluetuith (TUI-менеджер Bluetooth). Запускается из лаунчера — запись
+# ~/.local/share/applications/bluetuith.desktop поднимает его в kitty с
+# app_id=bluetuith, отсюда критерий. Всплывает по центру плавающим, а не влезает
+# в тайлинг рабочего стола: заглянуть в наушники и закрыть.
+# Блочная форма for_window в sway не поддерживается — команды через запятую.
+for_window [app_id="bluetuith"] floating enable, resize set 900 600, move position center
+for_window [app_id="^chrome-.*"] border none
+
+### Автозапуск
+# Прокинуть переменные сессии в dbus/systemd — нужно панели и порталам.
+exec_always dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway XCURSOR_THEME XCURSOR_SIZE
+# Светлая/тёмная тема + панель, одной цепочкой.
+#
+# refresh применяет к сессии текущую тему из gsettings: шлёт sway цвета через
+# swaymsg (конфиг статичен и знает только тёмные), будит kitty сигналом и
+# генерирует colors.css для waybar и wofi.
+#
+# Почему в одной строке с панелью, а не отдельным exec_always: exec'и sway
+# запускаются ПАРАЛЛЕЛЬНО, порядок строк ничего не гарантирует, а waybar без
+# colors.css не просто теряет стиль — он падает, `@import` несуществующего файла
+# ломает разбор всего style.css. В git этого файла нет (производное состояние),
+# на свежей машине его создаёт как раз refresh. Цепочка через ; — единственный
+# способ гарантировать, что панель стартует уже с палитрой.
+#
+# exec_always, а не exec: `exec` отрабатывает только при старте сессии, и после
+# $mod+Shift+C ни панель, ни тема бы не вернулись (reload вернул бы тёмные
+# client.* из этого файла). pkill перед запуском — чтобы reload не плодил вторую
+# копию панели поверх первой.
+exec_always sh -c 'pkill -x waybar; $HOME/.local/bin/theme-toggle refresh; exec waybar'
+# Стартовать с терминала — заодно страховка, пока биндов почти нет.
+exec $term
+# Мониторы: применяет профиль под текущий набор выходов и следит за hotplug.
+# kanshictl в Ubuntu вырезан (тянет varlink), перечитать конфиг на лету нечем —
+# отсюда pkill + перезапуск, он же спасает от второй копии после reload.
+#
+# Если раскладка уедет и экрана не станет: Ctrl+Alt+F3 (TTY) или ssh, затем
+#   pkill -x kanshi && swaymsg output '*' enable
+# — и удалить эту строку; без неё всё возвращается к штатному поведению sway.
+exec_always sh -c 'pkill -x kanshi; exec kanshi'
+
+### Клавиши — запуск
+bindsym --to-code $mod+Return   exec $term
+bindsym --to-code $mod+b        exec $browser
+bindsym --to-code $mod+d        exec $menu
+# Мониторы: GUI-раскладка мышью, по закрытию окна набор запоминается профилем.
+bindsym --to-code $mod+p        exec display-setup
+bindsym --to-code $mod+Shift+q  kill
+
+### Клавиши — управление sway
+bindsym --to-code $mod+Shift+c  reload
+bindsym --to-code $mod+Shift+e  exec swaynag -t warning \
+    -m 'Выйти из sway? (вернёт на экран входа GDM)' \
+    -B 'Выйти' 'swaymsg exit'
+
+### Фокус
+bindsym --to-code $mod+$left  focus left
+bindsym --to-code $mod+$down  focus down
+bindsym --to-code $mod+$up    focus up
+bindsym --to-code $mod+$right focus right
+bindsym --to-code $mod+Left   focus left
+bindsym --to-code $mod+Down   focus down
+bindsym --to-code $mod+Up     focus up
+bindsym --to-code $mod+Right  focus right
+
+### Перемещение окна
+bindsym --to-code $mod+Shift+$left  move left
+bindsym --to-code $mod+Shift+$down  move down
+bindsym --to-code $mod+Shift+$up    move up
+bindsym --to-code $mod+Shift+$right move right
+bindsym --to-code $mod+Shift+Left   move left
+bindsym --to-code $mod+Shift+Down   move down
+bindsym --to-code $mod+Shift+Up     move up
+bindsym --to-code $mod+Shift+Right  move right
+
+### Рабочие столы
+bindsym --to-code $mod+1 workspace number 1
+bindsym --to-code $mod+2 workspace number 2
+bindsym --to-code $mod+3 workspace number 3
+bindsym --to-code $mod+4 workspace number 4
+bindsym --to-code $mod+5 workspace number 5
+bindsym --to-code $mod+6 workspace number 6
+bindsym --to-code $mod+7 workspace number 7
+bindsym --to-code $mod+8 workspace number 8
+bindsym --to-code $mod+9 workspace number 9
+bindsym --to-code $mod+Shift+1 move container to workspace number 1
+bindsym --to-code $mod+Shift+2 move container to workspace number 2
+bindsym --to-code $mod+Shift+3 move container to workspace number 3
+bindsym --to-code $mod+Shift+4 move container to workspace number 4
+bindsym --to-code $mod+Shift+5 move container to workspace number 5
+bindsym --to-code $mod+Shift+6 move container to workspace number 6
+bindsym --to-code $mod+Shift+7 move container to workspace number 7
+bindsym --to-code $mod+Shift+8 move container to workspace number 8
+bindsym --to-code $mod+Shift+9 move container to workspace number 9
+# Переход между столами: предыдущий / следующий
+bindsym --to-code $mod+Ctrl+h workspace prev
+bindsym --to-code $mod+Ctrl+l workspace next
+
+### Раскладка окон
+bindsym --to-code $mod+g splith
+bindsym --to-code $mod+Shift+v splitv
+bindsym --to-code $mod+s layout stacking
+bindsym --to-code $mod+w layout tabbed
+bindsym --to-code $mod+e layout toggle split
+bindsym --to-code $mod+f fullscreen
+bindsym --to-code $mod+Shift+space floating toggle
+bindsym --to-code $mod+space focus mode_toggle
+bindsym --to-code $mod+a focus parent
+
+### Режим изменения размера
+mode "resize" {
+    bindsym --to-code $left  resize shrink width 30px
+    bindsym --to-code $down  resize grow height 30px
+    bindsym --to-code $up    resize shrink height 30px
+    bindsym --to-code $right resize grow width 30px
+    bindsym --to-code Left   resize shrink width 30px
+    bindsym --to-code Down   resize grow height 30px
+    bindsym --to-code Up     resize shrink height 30px
+    bindsym --to-code Right  resize grow width 30px
+    bindsym --to-code Return mode "default"
+    bindsym --to-code Escape mode "default"
+}
+bindsym --to-code $mod+r mode "resize"
+
+### Мультимедиа-клавиши
+# Громкость через pactl: звуковой сервер тут pulseaudio, а не pipewire, так что
+# wpctl из старого конфига (он из wireplumber) не подходит.
+bindsym --locked XF86AudioRaiseVolume exec pactl set-sink-volume @DEFAULT_SINK@ +5%
+bindsym --locked XF86AudioLowerVolume exec pactl set-sink-volume @DEFAULT_SINK@ -5%
+bindsym --locked XF86AudioMute        exec pactl set-sink-mute   @DEFAULT_SINK@ toggle
+# Яркость. --locked: работает и на заблокированном экране.
+bindsym --locked XF86MonBrightnessUp   exec brightnessctl set 5%+
+bindsym --locked XF86MonBrightnessDown exec brightnessctl set 5%-
+
+# Не перенесено из старого конфига — нужны пакеты, которых не ставили:
+#   $mod+Tab MRU-переключение — демон ~/.config/sway/mru-switch.py
+#   $mod+v история буфера      — cliphist + wtype + лаунчер
+#   Print / $mod+Print         — grim + slurp (+ swappy для аннотаций)
+#   Ctrl+Alt+q блокировка      — swaylock
