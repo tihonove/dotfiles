@@ -116,8 +116,19 @@ ble-face \
 # -d (отложенная загрузка) тут не оптимизация, а требование порядка:
 # fzf-completion обязан грузиться ПОСЛЕ bash-completion, а тот подключается в
 # rc.sh уже после ble.sh. С -d модуль дожидается конца инициализации.
-ble-import -d integration/fzf-completion
-ble-import -d integration/fzf-key-bindings
+#
+# Гард по тому же принципу, что у ble.sh и starship в rc.sh: без fzf в системе
+# модули печатают «ble/contrib/integration: 'fzf' not found.» на КАЖДЫЙ старт
+# шелла, по строке на модуль. Ровно это и вылезало в свежем devsy-контейнере,
+# где fzf пакетом не стоит.
+#
+# type -P, а не command -v: нужен именно бинарник в PATH. Момент проверки
+# безопасен — fzf ставится пакетом в /usr/bin, а он в PATH всегда, тогда как
+# ~/.local/bin rc.sh прописывает уже после загрузки ble.sh.
+if type -P fzf >/dev/null 2>&1; then
+    ble-import -d integration/fzf-completion
+    ble-import -d integration/fzf-key-bindings
+fi
 
 # Keep Enter executing the command even when ble.sh enters multiline mode.
 ble-bind -m emacs -f 'C-m' accept-line
