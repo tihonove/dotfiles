@@ -51,6 +51,8 @@ PROFILE="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/profile"
 BASHRC="$HOME/.bashrc"
 BEGIN_MARK='# >>> dotfiles >>>'
 END_MARK='# <<< dotfiles <<<'
+LATE_BEGIN_MARK='# >>> dotfiles prompt >>>'
+LATE_END_MARK='# <<< dotfiles prompt <<<'
 
 DRY_RUN=0
 
@@ -220,25 +222,47 @@ profile_remove() {
 
 # ── ~/.bashrc ────────────────────────────────────────────────────────────────
 
-# Блок, который живёт в ~/.bashrc. Меняется только вместе с проверкой на
-# маркер: у тех, кто уже установился, install.sh его не переписывает.
-bashrc_block() {
+# Блоков ДВА, и это не симметрия ради красоты, а разные требования к порядку.
+#
+# Ранний идёт в НАЧАЛО: чужие инсталляторы дописывают себя в конец, и их PATH
+# должен лечь позже нашего, чтобы побеждать при конфликте имён.
+#
+# Поздний идёт в КОНЕЦ, и ровно по обратной причине. Чужой ~/.bashrc может
+# задавать свой PS1 ниже нашего блока — так делает базовый образ devcontainer
+# (функция __bash_prompt). Пока промпт настраивался в раннем блоке, starship
+# отрабатывал первым и его молча затирали: со стороны выглядело, будто starship
+# не установлен вовсе.
+#
+# Оба меняются только вместе с проверкой на свой маркер: у тех, кто уже
+# установился, install.sh их не переписывает.
+bashrc_block_early() {
     cat <<EOF
 $BEGIN_MARK
-# Дописано install.sh из ~/.dotfiles. Руками не править, своё писать НИЖЕ:
-# всё, что вне блока, считается машинно-локальным и никуда не уезжает.
+# Дописано install.sh из ~/.dotfiles. Руками не править, своё писать МЕЖДУ
+# блоками: всё, что вне них, считается машинно-локальным и никуда не уезжает.
 [ -f "\$HOME/.config/bash/rc.sh" ] && . "\$HOME/.config/bash/rc.sh"
 $END_MARK
 EOF
 }
 
-# Строки ~/.bashrc за пределами блока — то самое машинно-локальное, ради
+bashrc_block_late() {
+    cat <<EOF
+$LATE_BEGIN_MARK
+# Промпт — последним, ПОСЛЕ всего остального в этом файле: иначе чужой PS1,
+# заданный ниже, затрёт starship. Подробности — в самом prompt.sh.
+[ -f "\$HOME/.config/bash/prompt.sh" ] && . "\$HOME/.config/bash/prompt.sh"
+$LATE_END_MARK
+EOF
+}
+
+# Строки ~/.bashrc за пределами блоков — то самое машинно-локальное, ради
 # которого вся схема и затевалась. Раз в полгода полезно перечитать и
 # решить, что из этого поднять в репу.
 bashrc_outside_block() {
-    awk -v b="$BEGIN_MARK" -v e="$END_MARK" '
-        $0 == b { inblock = 1; next }
-        $0 == e { inblock = 0; next }
+    awk -v b="$BEGIN_MARK" -v e="$END_MARK" \
+        -v lb="$LATE_BEGIN_MARK" -v le="$LATE_END_MARK" '
+        $0 == b || $0 == lb { inblock = 1; next }
+        $0 == e || $0 == le { inblock = 0; next }
         !inblock && NF { print }
     ' "$BASHRC"
 }
@@ -251,28 +275,27 @@ check_bashrc() {
         echo "~/.bashrc не существует — запусти ./install.sh"
         return
     fi
-    if grep -qxF "$BEGIN_MARK" "$BASHRC"; then
-        echo "~/.bashrc: блок dotfiles на месте"
-    else
-        echo "~/.bashrc: блока dotfiles НЕТ — запусти ./install.sh"
-    fi
+    local m
+    for m in "$BEGIN_MARK:ранний (rc.sh)" "$LATE_BEGIN_MARK:поздний (prompt.sh)"; do
+        if grep -qxF "${m%%:*}" "$BASHRC"; then
+            echo "~/.bashrc: блок ${m#*:} на месте"
+        else
+            echo "~/.bashrc: блока ${m#*:} НЕТ — запусти ./install.sh"
+        fi
+    done
 
     local extra
     extra="$(bashrc_outside_block)"
     if [[ -z "$extra" ]]; then
-        echo "вне блока: пусто"
+        echo "вне блоков: пусто"
     else
-        echo "вне блока ($(wc -l <<<"$extra") строк):"
+        echo "вне блоков ($(wc -l <<<"$extra") строк):"
         sed 's/^/    /' <<<"$extra"
     fi
 }
 
-# Идемпотентно: есть маркер — не трогаем, нет — дописываем.
-#
-# Блок встаёт В НАЧАЛО файла, потому что чужие инсталляторы дописывают
-# в конец: так наши настройки грузятся первыми, а их PATH — последним и,
-# значит, побеждает при конфликте. Нам это подходит: корпоративные тулзы
-# должны работать, а в ~/.local/bin лежит только своё.
+# Идемпотентно: есть маркер — не трогаем, нет — дописываем. Бэкап снимается
+# один раз на запуск, даже если дописываются оба блока.
 ensure_bashrc_block() {
     if [[ -L "$BASHRC" ]]; then
         # Наследство прежней схемы, когда ~/.bashrc был симлинком в репу.
@@ -284,25 +307,45 @@ ensure_bashrc_block() {
         fi
     fi
 
-    if [[ -f "$BASHRC" ]] && grep -qxF "$BEGIN_MARK" "$BASHRC"; then
-        echo "  ~/.bashrc: блок уже на месте"
-        return
-    fi
+    local backed_up=0 tmp
 
-    if ((DRY_RUN)); then
-        echo "  ~/.bashrc: дописал бы блок в начало файла"
-        return
-    fi
-
-    local tmp="$BASHRC.dotfiles-tmp.$$"
-    bashrc_block > "$tmp"
-    if [[ -f "$BASHRC" ]]; then
-        echo "" >> "$tmp"
-        cat "$BASHRC" >> "$tmp"
+    backup_once() {
+        ((backed_up)) && return 0
+        [[ -f "$BASHRC" ]] || return 0
         cp "$BASHRC" "$BASHRC.backup.$(date +%Y%m%d_%H%M%S)"
+        backed_up=1
+    }
+
+    # Ранний блок — в начало файла.
+    if [[ -f "$BASHRC" ]] && grep -qxF "$BEGIN_MARK" "$BASHRC"; then
+        echo "  ~/.bashrc: ранний блок уже на месте"
+    elif ((DRY_RUN)); then
+        echo "  ~/.bashrc: дописал бы ранний блок в начало файла"
+    else
+        tmp="$BASHRC.dotfiles-tmp.$$"
+        bashrc_block_early > "$tmp"
+        if [[ -f "$BASHRC" ]]; then
+            echo "" >> "$tmp"
+            cat "$BASHRC" >> "$tmp"
+            backup_once
+        fi
+        mv "$tmp" "$BASHRC"
+        echo "  ~/.bashrc: ранний блок дописан"
     fi
-    mv "$tmp" "$BASHRC"
-    echo "  ~/.bashrc: блок дописан"
+
+    # Поздний блок — в конец. Именно в конец, а не рядом с ранним: смысл всей
+    # затеи в том, чтобы промпт настраивался после чужих строк.
+    if [[ -f "$BASHRC" ]] && grep -qxF "$LATE_BEGIN_MARK" "$BASHRC"; then
+        echo "  ~/.bashrc: поздний блок уже на месте"
+    elif ((DRY_RUN)); then
+        echo "  ~/.bashrc: дописал бы поздний блок в конец файла"
+    else
+        backup_once
+        { echo ""; bashrc_block_late; } >> "$BASHRC"
+        echo "  ~/.bashrc: поздний блок дописан"
+    fi
+
+    unset -f backup_once
 }
 
 # ── План ─────────────────────────────────────────────────────────────────────
