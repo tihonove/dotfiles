@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# Внешние тулзы модуля core: starship и ble.sh.
+#
+# Бинарники в git не кладём. Прошлая версия dotfiles вендорила их в репу, и
+# битый `.starship.arm` (32-битный ARM) на aarch64 не падал с ENOEXEC, а
+# намертво вешал старт шелла внутри `$(starship init bash)`.
+#
+# Ни одного sudo: скрипт кладёт всё в ~/.local и работает в контейнере, где
+# прав нет и apt звать некому.
+
+set -euo pipefail
+
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/tools.sh"
+
+install_starship() {
+    echo "starship..."
+
+    # Уже установленный starship не трогаем, откуда бы он ни взялся. В Ubuntu
+    # 26.04 он есть пакетом (1.22), и подкладывать поверх свою копию в
+    # ~/.local/bin — верный способ однажды запутаться, какая из двух в PATH.
+    #
+    # Если пакета нет — ставим бинарник. Это и есть путь для контейнера: без
+    # sudo, и версия свежее пакетной.
+    if have starship; then
+        echo "  ✅ уже есть: $(starship --version | head -1) ($(command -v starship))"
+        return 0
+    fi
+
+    local target version tmp
+    target="$(arch_for rust)"
+
+    version=$(github_latest_version starship/starship)
+    [[ -n "$version" ]] || { echo "❌ Не определил версию starship" >&2; return 1; }
+    echo "  последний релиз: v$version"
+
+    tmp=$(mktemp -d)
+    trap "rm -rf '$tmp'" RETURN
+
+    curl -fsSL -o "$tmp/starship.tar.gz" \
+        "https://github.com/starship/starship/releases/download/v${version}/starship-${target}.tar.gz"
+    tar -xzf "$tmp/starship.tar.gz" -C "$tmp"
+
+    mkdir -p "$BIN_DIR"
+    install -m 755 "$tmp/starship" "$BIN_DIR/starship"
+
+    # Проверяем, что бинарник реально запускается на этой машине: неверная арка
+    # диагностируется только в момент запуска.
+    echo "  ✅ $("$BIN_DIR/starship" --version | head -1)"
+}
+
+install_blesh() {
+    echo "ble.sh..."
+
+    # Ветка nightly: последний стабильный релиз — апрель 2023, он старше самого
+    # bash в системе. Апстрим ставить nightly и рекомендует.
+    #
+    # Ассет один на все архитектуры — это bash-скрипты, не бинарник.
+    local tmp
+    tmp=$(mktemp -d)
+    trap "rm -rf '$tmp'" RETURN
+
+    curl -fsSL -o "$tmp/ble.tar.xz" \
+        "https://github.com/akinomyoga/ble.sh/releases/download/nightly/ble-nightly.tar.xz"
+    tar -xJf "$tmp/ble.tar.xz" -C "$tmp"
+
+    # --install раскладывает всё в ~/.local/share/blesh. Повторный запуск
+    # перезаписывает — обновление делается тем же вызовом.
+    bash "$tmp/ble-nightly/ble.sh" --install "$HOME/.local/share" >/dev/null
+
+    local target="$HOME/.local/share/blesh/ble.sh"
+    [[ -s "$target" ]] || { echo "❌ ble.sh не установился в $target" >&2; return 1; }
+
+    echo "  ✅ ble.sh $(grep -m1 -oP '_ble_init_version=\K.*' "$target")"
+}
+
+install_starship
+install_blesh
+
+# fzf тут намеренно нет: он ставится пакетом. Дело не только в свежести —
+# пакет кладёт shell-скрипты в /usr/share/doc/fzf/examples, откуда их сам
+# находит модуль интеграции ble.sh. В релизном тарболе с GitHub лежит один
+# бинарник, и интеграцию пришлось бы настраивать руками. См. README, «fzf».
+have fzf || echo "ℹ️  fzf не установлен: sudo apt install fzf (см. README, «Пакеты»)"

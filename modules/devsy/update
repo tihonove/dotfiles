@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# devsy CLI. Ставится отдельно от core: на машине, где не заходишь в удалённые
+# воркспейсы, эти 122 МБ не нужны, а раньше они приезжали вместе со starship.
+
+set -euo pipefail
+
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/tools.sh"
+
+echo "devsy..."
+
+arch="$(arch_for go)"
+
+mkdir -p "$BIN_DIR"
+curl -fsSL -o "$BIN_DIR/devsy" \
+    "https://github.com/devsy-org/devsy/releases/latest/download/devsy-${arch}"
+chmod +x "$BIN_DIR/devsy"
+
+echo "  ✅ devsy $("$BIN_DIR/devsy" --version)"
+echo "  дальше: modules/devsy/setup — настройка ssh-провайдера"

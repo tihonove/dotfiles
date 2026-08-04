@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# Шрифты модуля kitty. От архитектуры не зависят — это ttf.
+#
+# Отдельно от core намеренно: на машине без графики шрифты не нужны, а раньше
+# они ставились всегда и вместе с ними приезжал вызов fc-cache, которого в
+# контейнерах нет.
+
+set -euo pipefail
+
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/tools.sh"
+
+# fontconfig — единственное требование, и оно не про «поставить», а про «есть
+# ли кому пользоваться». Нет fc-cache — значит и шрифтов в этой системе никто
+# не рисует: контейнер, сервер. Ставить туда 30 МБ ttf смысла нет.
+if ! have fc-cache; then
+    echo "fontconfig в системе нет (нет fc-cache) — шрифты не нужны, пропускаю"
+    exit 0
+fi
+
+install_jetbrains_mono_nerd_font() {
+    echo "JetBrainsMono Nerd Font..."
+
+    local font_dir="$HOME/.local/share/fonts/JetBrainsMonoNerdFont"
+
+    local version
+    version=$(github_latest_version ryanoasis/nerd-fonts)
+    [[ -n "$version" ]] || { echo "❌ Не определил версию nerd-fonts" >&2; return 1; }
+    echo "  последний релиз: v$version"
+
+    local tmp
+    tmp=$(mktemp -d)
+    trap "rm -rf '$tmp'" RETURN
+
+    curl -fsSL -o "$tmp/font.zip" \
+        "https://github.com/ryanoasis/nerd-fonts/releases/download/v${version}/JetBrainsMono.zip"
+
+    # unzip в системе нет, а python3 есть. Заодно фильтруем: из архива нужны
+    # только два начертания — обычное и Mono (одноширинные глифы, его хочет
+    # kitty). Propo-вариант пропорциональный, в терминале не нужен и только
+    # плодит одноимённые семейства в списках шрифтов.
+    rm -rf "$font_dir"
+    mkdir -p "$font_dir"
+    python3 - "$tmp/font.zip" "$font_dir" <<'PY'
+import sys, zipfile, os, posixpath
+
+src, dst = sys.argv[1], sys.argv[2]
+keep = ("JetBrainsMonoNerdFont-", "JetBrainsMonoNerdFontMono-")
+with zipfile.ZipFile(src) as z:
+    for name in z.namelist():
+        base = posixpath.basename(name)
+        if base.endswith(".ttf") and base.startswith(keep):
+            with z.open(name) as fsrc, open(os.path.join(dst, base), "wb") as fdst:
+                fdst.write(fsrc.read())
+PY
+
+    local count
+    count=$(find "$font_dir" -name '*.ttf' | wc -l)
+    [[ "$count" -gt 0 ]] || { echo "❌ Из архива ничего не распаковалось" >&2; return 1; }
+
+    fc-cache -f "$font_dir" >/dev/null
+    echo "  ✅ начертаний: $count, в $font_dir"
+}
+
+install_noto_color_emoji() {
+    echo "Noto Color Emoji..."
+
+    local font_dir="$HOME/.local/share/fonts/NotoColorEmoji"
+
+    # JetBrainsMono Nerd Font не покрывает emoji-блоки: ✅ (U+2705), ❌ (U+274C),
+    # 💡 (U+1F4A1) и прочие рисуются пустыми квадратами — их нет НИ В ОДНОМ
+    # системном шрифте. Их печатают в том числе скрипты из этой самой репы.
+    #
+    # У noto-emoji нет релизов с ассетами, поэтому берём ttf прямо из main.
+    mkdir -p "$font_dir"
+    curl -fsSL -o "$font_dir/NotoColorEmoji.ttf" \
+        "https://github.com/googlefonts/noto-emoji/raw/main/fonts/NotoColorEmoji.ttf"
+
+    # Битый/обрезанный файл fc-cache молча проглотит, поэтому проверяем, что
+    # fontconfig реально видит в нём глиф.
+    fc-cache -f "$font_dir" >/dev/null
+    fc-list ":charset=1F600" family | grep -qi 'noto color emoji' \
+        || { echo "❌ Шрифт скачался, но emoji-глифов в нём не видно" >&2; return 1; }
+
+    echo "  ✅ $font_dir"
+}
+
+install_jetbrains_mono_nerd_font
+install_noto_color_emoji

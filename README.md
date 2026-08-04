@@ -8,13 +8,13 @@
 ```
 .
 ├── install.sh         # раскладывает симлинки
-├── update-tools.sh    # ставит внешние бинарники в ~/.local/bin
+├── lib/tools.sh       # общее для установщиков модулей
 ├── README.md
 ├── modules/
 │   └── <модуль>/
 │       ├── home/        # зеркало ~ : home/<path> -> ~/<path>
 │       ├── module.conf  # desc, requires, scripts
-│       └── <скрипт>     # запускается руками, install.sh его не трогает
+│       └── update       # ставит внешние бинарники; запускается руками
 └── system/          # то, что ставится в /etc руками, под sudo
 ```
 
@@ -34,10 +34,10 @@ Payload разложен по модулям, чтобы база вставал
 
 | модуль | что внутри | requires |
 |---|---|---|
-| `core` | bash, ble.sh, fzf, starship, палитра темы (`theme-colors`) | — |
-| `kitty` | терминал и шрифты (`fontconfig`) | `kitty` |
+| `core` | bash, ble.sh, fzf, starship, tmux, палитра темы (`theme-colors`) | — |
+| `kitty` | терминал, шрифты (`fontconfig`), `ssh.conf` для kitten ssh | `kitty` |
 | `sway` | сессия целиком: sway, waybar, wofi, kanshi, тема, мониторы | `sway waybar wofi kanshi` |
-| `devsy` | `~/.ssh/config` + скрипт настройки ssh-провайдера | — |
+| `devsy` | `~/.ssh/config` + установка CLI и настройка ssh-провайдера | — |
 | `vexx` | только скрипт обновления бинарника | — |
 
 Цель симлинка считается от пути **внутри `home/`**, а не от имени модуля.
@@ -200,13 +200,42 @@ git clone https://github.com/tihonove/dotfiles.git ~/.dotfiles
 
 ## Внешние тулзы
 
+У каждого модуля свой установщик — `modules/<модуль>/update`. Запускаются
+руками, `install.sh` их не трогает (см. «Модули»):
+
 ```sh
-~/.dotfiles/update-tools.sh
+~/.dotfiles/modules/core/update    # starship, ble.sh
+~/.dotfiles/modules/kitty/update   # шрифты
+~/.dotfiles/modules/devsy/update   # devsy CLI
+~/.dotfiles/modules/vexx/update    # vexx
 ```
 
-Качает бинарники в `~/.local/bin`. В git их не кладём: в старых dotfiles
-вендоренный `.starship.arm` был собран под 32-битный ARM и на aarch64 не падал,
-а вешал старт шелла намертво. Машина ARM, сборки берём musl.
+Раньше это был один `modules/<модуль>/update` в корне, и он ставил всё сразу. Разрез по
+модулям — не косметика, а следствие двух вещей, вскрывшихся на контейнере:
+
+- **всё или ничего.** Скрипт начинался с гарда `uname -m != aarch64` → `exit 1`
+  и падал целиком, хотя шрифты и ble.sh от архитектуры не зависят вовсе. Теперь
+  архитектура проверяется только там, где она реально нужна (`arch_for` в
+  `lib/tools.sh`), и заодно понимает x86_64;
+- **лишнее в чужой среде.** В контейнере нет `fc-cache`, и шаг со шрифтами ронял
+  скрипт под `set -e` — starship успевал поставиться, а ble.sh после него уже
+  нет. Плюс туда же приезжали 122 МБ devsy, которому в контейнере делать нечего.
+  Теперь контейнеру хватает `modules/core/update`, а шрифты сами себя пропускают,
+  если fontconfig в системе нет.
+
+Общее (`github_latest_version`, `arch_for`, `BIN_DIR`) вынесено в `lib/tools.sh`.
+Лежит в `lib/`, а не в `modules/`: `install.sh` считает модулем каждый каталог в
+`modules/`, и библиотека показалась бы в `list` отдельной строкой.
+
+Бинарники в git не кладём: в старых dotfiles вендоренный `.starship.arm` был
+собран под 32-битный ARM и на aarch64 не падал, а вешал старт шелла намертво.
+Сборки берём musl — не зависят от версии glibc.
+
+**Ни одного sudo.** Всё кладётся в `~/.local`, поэтому работает и там, где прав
+нет. starship при этом есть и пакетом (Ubuntu 26.04, 1.22), но уже установленный
+`starship` установщик не трогает, откуда бы тот ни взялся: подкладывать поверх
+свою копию в `~/.local/bin` — верный способ однажды запутаться, какая из двух в
+`PATH`. Нет пакета — качается бинарник, и он свежее пакетного.
 
 ## Свой софт (догфуд)
 
@@ -214,9 +243,9 @@ git clone https://github.com/tihonove/dotfiles.git ~/.dotfiles
 ~/.dotfiles/modules/vexx/update
 ```
 
-Отдельно от `update-tools.sh`: своё обновляется часто и по одному, внешнее —
-редко и пачкой. Хочется дёрнуть сразу после своей же сборки, не перекачивая
-шрифты и ble.sh.
+Отдельно от остальных: своё обновляется часто и по одному, внешнее — редко и
+пачкой. Хочется дёрнуть сразу после своей же сборки, не перекачивая шрифты и
+ble.sh.
 
 - **vexx** — редактор, ставится в `~/.local/bin` из релиза `nightly`.
   Версия — коммит (`nightly-a791c81`); если установленный совпадает с релизом,
@@ -231,12 +260,12 @@ git clone https://github.com/tihonove/dotfiles.git ~/.dotfiles
 - **tmux** — конфиг `.config/tmux/tmux.conf`, тема и меню-бар. Подробности ниже
 - **шрифты** — цепочка фолбэков собирается в `.config/fontconfig/fonts.conf`:
   - **JetBrainsMono Nerd Font** — дефолтный `monospace`, ставится в
-    `~/.local/share/fonts` через `update-tools.sh`
+    `~/.local/share/fonts` через `modules/<модуль>/update`
   - **Symbola** — всё, чего нет в Nerd Font: блок Miscellaneous Technical
     (`⏵` U+23F5, `⎿` U+23BF в TUI Claude Code) и эмодзи по Unicode 9
     включительно (`✅ ❌ 💡`), монохромом. Ставится пакетом, см. «Пакеты»
   - **Noto Color Emoji** — цветные эмодзи новее Unicode 9 (`🥲 🫠`), которых нет
-    даже в Symbola; ставится в `~/.local/share/fonts` через `update-tools.sh`
+    даже в Symbola; ставится в `~/.local/share/fonts` через `modules/<модуль>/update`
 - **sway** — база (раскладки, тачпад, тема, автозапуск панели), биндов почти нет
 - **тема** — светлая/тёмная переключается для всей сессии разом, скрипты
   `.local/bin/theme-toggle` и `theme-colors`. Подробности ниже
@@ -285,7 +314,7 @@ ble-import -d integration/fzf-key-bindings
   `_ble_contrib_fzf_base` перед `ble-import`;
 - в `rc.sh` остался обычный `eval "$(fzf --bash)"`, но под условием
   `[[ ! ${BLE_VERSION-} ]]`: это запасной путь для сессии без ble.sh (свежая
-  машина до `update-tools.sh`), иначе fzf остался бы вовсе без биндингов;
+  машина до `modules/<модуль>/update`), иначе fzf остался бы вовсе без биндингов;
 - `--color=16` в `FZF_DEFAULT_OPTS` — то, из-за чего fzf следует теме: он
   рисует ANSI-цветами, а палитру 0..15 kitty перекрашивает на лету по
   `theme-toggle`. Дефолтная схема fzf прибита к 256-цветным значениям под
@@ -328,7 +357,7 @@ CPU и память в статусе считает `.local/bin/tmux-sysstat` �
 (`status-interval 3`).
 
 catppuccin **вендорится в модуль**, в `.local/share/tmux/catppuccin` — вопреки
-общему правилу «всё внешнее через `update-tools.sh`». Правило это про бинарники,
+общему правилу «всё внешнее через `modules/<модуль>/update`». Правило это про бинарники,
 у которых неверная арка не диагностируется до запуска; здесь же обычные конфиги
 tmux, и такой беды у них быть не может. Из апстрима взят только рантайм (26
 файлов вместо 61): без `docs/`, `tests/` и линтерских конфигов. Версия — в файле
@@ -436,7 +465,7 @@ theme-colors kitty|sway|css [dark|light]   # посмотреть, что пол
 ## devsy
 
 ```sh
-~/.dotfiles/update-tools.sh   # ставит CLI
+~/.dotfiles/modules/devsy/update   # ставит CLI
 ~/.dotfiles/modules/devsy/setup   # настраивает ssh-провайдер (идемпотентно)
 ```
 
@@ -471,7 +500,7 @@ ssh devsy-host        # сама облачная машина
   `.ble-nightly/` на 4 МБ. У бинарников неверная арка не диагностируется до
   запуска: на aarch64 32-битный не падает, а вешает старт шелла. У `.ble-nightly`
   беда мягче, но та же по природе: `update-vendored.sh` его не обновлял, и он
-  просто протухал в репе. Всё внешнее — через `update-tools.sh`.
+  просто протухал в репе. Всё внешнее — через `modules/<модуль>/update`.
   Одно исключение — catppuccin для tmux, см. «tmux»: это конфиги tmux, не
   бинарник, так что беды с архитектурой у него быть не может.
 - **kitty.cage.conf** — обвязка для cage (киоск), самого cage в системе нет.
@@ -510,7 +539,7 @@ sudo apt install --no-install-recommends fonts-symbola
 # посмотреть выходы глазами, когда sway-сессии под рукой нет.
 sudo apt install --no-install-recommends kanshi nwg-displays wlr-randr
 
-# fzf. Из пакета, а не из update-tools.sh: в репозитории лежит 0.67, свежее
+# fzf. Из пакета, а не бинарником с GitHub: в репозитории лежит 0.67, свежее
 # некуда, и — важнее — пакет кладёт shell-скрипты в /usr/share/doc/fzf/examples,
 # откуда их сам находит модуль интеграции ble.sh (см. «fzf»).
 sudo apt install --no-install-recommends fzf
@@ -523,7 +552,7 @@ sudo usermod -aG video "$USER"   # применяется после релог�
 
 ### tailscale
 
-Не через `update-tools.sh`: это системный демон с юнитом systemd и правами на
+Не через `modules/<модуль>/update`: это системный демон с юнитом systemd и правами на
 `/dev/net/tun`, а не бинарник в `~/.local/bin`.
 
 ```sh
