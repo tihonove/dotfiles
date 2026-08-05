@@ -26,6 +26,15 @@ install_jetbrains_mono_nerd_font() {
     local version
     version=$(github_latest_version ryanoasis/nerd-fonts)
     [[ -n "$version" ]] || { echo "❌ Не определил версию nerd-fonts" >&2; return 1; }
+
+    # Архив ~30 МБ, а install.sh дёргает этот скрипт сам — тянуть его на каждый
+    # прогон нельзя. Версии в самих ttf нет, поэтому кладём рядом метку.
+    # Она же и признак целой установки: писать её надо ПОСЛЕ распаковки.
+    local stamp="$font_dir/.version"
+    if [[ -f "$stamp" && "$(cat "$stamp")" == "$version" ]]; then
+        echo "  ✅ уже актуален: v$version"
+        return 0
+    fi
     echo "  последний релиз: v$version"
 
     local tmp
@@ -58,6 +67,7 @@ PY
     count=$(find "$font_dir" -name '*.ttf' | wc -l)
     [[ "$count" -gt 0 ]] || { echo "❌ Из архива ничего не распаковалось" >&2; return 1; }
 
+    echo "$version" > "$stamp"
     fc-cache -f "$font_dir" >/dev/null
     echo "  ✅ начертаний: $count, в $font_dir"
 }

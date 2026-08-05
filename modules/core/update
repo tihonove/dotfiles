@@ -56,6 +56,22 @@ install_blesh() {
     # bash в системе. Апстрим ставить nightly и рекомендует.
     #
     # Ассет один на все архитектуры — это bash-скрипты, не бинарник.
+    local installed="$HOME/.local/share/blesh/ble.sh" cur latest
+
+    # У nightly нет версии в теге, зато рядом с ble-nightly.tar.xz апстрим
+    # выкладывает датированную копию с коммитом в имени: ble-nightly-20260711
+    # +d69e4d5.tar.xz. Установленный ble.sh знает свой коммит как
+    # _ble_init_version=0.4.0-nightly+d69e4d5 — по нему и сверяем.
+    if [[ -s "$installed" ]]; then
+        cur=$(grep -m1 -oP '_ble_init_version=.*\+\K[0-9a-f]+' "$installed" || true)
+        latest=$(curl -fsSL "https://api.github.com/repos/akinomyoga/ble.sh/releases/tags/nightly" \
+            | grep -oP '"name":\s*"ble-nightly-[0-9]+\+\K[0-9a-f]+' | tail -1 || true)
+        if [[ -n "$cur" && "$cur" == "$latest" ]]; then
+            echo "  ✅ уже актуален: $(grep -m1 -oP '_ble_init_version=\K.*' "$installed")"
+            return 0
+        fi
+    fi
+
     local tmp
     tmp=$(mktemp -d)
     trap "rm -rf '$tmp'" RETURN
@@ -74,11 +90,47 @@ install_blesh() {
     echo "  ✅ ble.sh $(grep -m1 -oP '_ble_init_version=\K.*' "$target")"
 }
 
-install_starship
-install_blesh
+install_fzf() {
+    echo "fzf..."
 
-# fzf тут намеренно нет: он ставится пакетом. Дело не только в свежести —
-# пакет кладёт shell-скрипты в /usr/share/doc/fzf/examples, откуда их сам
-# находит модуль интеграции ble.sh. В релизном тарболе с GitHub лежит один
-# бинарник, и интеграцию пришлось бы настраивать руками. См. README, «fzf».
-have fzf || echo "ℹ️  fzf не установлен: sudo apt install fzf (см. README, «Пакеты»)"
+    # Раньше fzf сюда не входил: считалось, что нужен именно пакет, потому что
+    # он кладёт key-bindings.bash и completion.bash в /usr/share/doc/fzf/examples,
+    # откуда их находит модуль интеграции ble.sh, а в тарболе с GitHub один
+    # бинарник. Это перестало быть правдой: ble.sh умеет обходиться без файлов,
+    # см. contrib/integration/fzf.common.bash —
+    #
+    #   ((version>=4800)) && base=__eval_fzf_bash__
+    #
+    # то есть для fzf >= 0.48 он берёт интеграцию из `fzf --bash`. Апстрим давно
+    # 0.74, так что порог не актуален ни для одной живой версии.
+    #
+    # Из-за той догмы fzf не ставился нигде, кроме машин, где его поставили
+    # руками пакетом, — в свежем контейнере его просто не было.
+    if have fzf; then
+        echo "  ✅ уже есть: $(fzf --version) ($(command -v fzf))"
+        return 0
+    fi
+
+    local arch version tmp
+    arch="$(arch_for plain)"
+
+    version=$(github_latest_version junegunn/fzf)
+    [[ -n "$version" ]] || { echo "❌ Не определил версию fzf" >&2; return 1; }
+    echo "  последний релиз: v$version"
+
+    tmp=$(mktemp -d)
+    trap "rm -rf '$tmp'" RETURN
+
+    curl -fsSL -o "$tmp/fzf.tar.gz" \
+        "https://github.com/junegunn/fzf/releases/download/v${version}/fzf-${version}-linux_${arch}.tar.gz"
+    tar -xzf "$tmp/fzf.tar.gz" -C "$tmp"
+
+    mkdir -p "$BIN_DIR"
+    install -m 755 "$tmp/fzf" "$BIN_DIR/fzf"
+
+    echo "  ✅ $("$BIN_DIR/fzf" --version)"
+}
+
+install_starship
+install_fzf
+install_blesh

@@ -20,14 +20,17 @@ github_latest_version() {
 #
 #   arch_for rust   -> aarch64-unknown-linux-musl | x86_64-unknown-linux-musl
 #   arch_for go     -> linux-arm64 | linux-x64
+#   arch_for plain  -> arm64 | amd64      (так называет ассеты fzf)
 arch_for() {
     local kind="$1" m
     m="$(uname -m)"
     case "$kind:$m" in
-        rust:aarch64) echo aarch64-unknown-linux-musl ;;
-        rust:x86_64)  echo x86_64-unknown-linux-musl  ;;
-        go:aarch64)   echo linux-arm64 ;;
-        go:x86_64)    echo linux-x64   ;;
+        rust:aarch64)  echo aarch64-unknown-linux-musl ;;
+        rust:x86_64)   echo x86_64-unknown-linux-musl  ;;
+        go:aarch64)    echo linux-arm64 ;;
+        go:x86_64)     echo linux-x64   ;;
+        plain:aarch64) echo arm64 ;;
+        plain:x86_64)  echo amd64 ;;
         *) echo "❌ Неизвестная архитектура: $m" >&2; return 1 ;;
     esac
 }

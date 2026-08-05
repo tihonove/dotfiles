@@ -11,6 +11,17 @@ echo "devsy..."
 
 arch="$(arch_for go)"
 
+# Бинарник 122 МБ, а install.sh теперь дёргает этот скрипт сам — качать его
+# заново на каждый прогон нельзя. Сверяем `devsy --version` (отдаёт вида v1.14.1)
+# с тегом последнего релиза.
+latest=$(github_latest_version devsy-org/devsy || true)
+current=$("$BIN_DIR/devsy" --version 2>/dev/null || true)
+if [[ -n "$latest" && "${current#v}" == "$latest" ]]; then
+    echo "  ✅ уже актуален: $current"
+    exit 0
+fi
+[[ -z "$current" ]] || echo "  установлен $current, последний v$latest"
+
 mkdir -p "$BIN_DIR"
 curl -fsSL -o "$BIN_DIR/devsy" \
     "https://github.com/devsy-org/devsy/releases/latest/download/devsy-${arch}"
