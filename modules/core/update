@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Внешние тулзы модуля core: starship и ble.sh.
+# Внешние тулзы модуля core: starship, fzf, ble.sh.
 #
 # Бинарники в git не кладём. Прошлая версия dotfiles вендорила их в репу, и
 # битый `.starship.arm` (32-битный ARM) на aarch64 не падал с ENOEXEC, а
@@ -16,23 +16,33 @@ set -euo pipefail
 install_starship() {
     echo "starship..."
 
-    # Уже установленный starship не трогаем, откуда бы он ни взялся. В Ubuntu
-    # 26.04 он есть пакетом (1.22), и подкладывать поверх свою копию в
-    # ~/.local/bin — верный способ однажды запутаться, какая из двух в PATH.
+    # Системный (пакетный) starship не трогаем вовсе: подкладывать поверх свою
+    # копию в ~/.local/bin — верный способ однажды запутаться, какая из двух в
+    # PATH. Свой — сверяем по версии. Нет ни того ни другого — ставим бинарник,
+    # и это путь контейнера: без sudo и свежее пакетного.
     #
-    # Если пакета нет — ставим бинарник. Это и есть путь для контейнера: без
-    # sudo, и версия свежее пакетной.
-    if have starship; then
-        echo "  ✅ уже есть: $(starship --version | head -1) ($(command -v starship))"
+    # Проверять просто `have starship` нельзя: PATH пополняется в rc.sh только
+    # для интерактивного шелла, а этот скрипт зовут и из неинтерактивного ssh —
+    # там ~/.local/bin не виден, и свой же бинарник качался бы заново.
+    local path version tmp cur
+    path="$(command -v starship || true)"
+    if [[ -n "$path" && "$path" != "$BIN_DIR/starship" ]]; then
+        echo "  ✅ системный: $("$path" --version | head -1) ($path)"
         return 0
     fi
 
-    local target version tmp
-    target="$(arch_for rust)"
-
     version=$(github_latest_version starship/starship)
     [[ -n "$version" ]] || { echo "❌ Не определил версию starship" >&2; return 1; }
+
+    cur=$("$BIN_DIR/starship" --version 2>/dev/null | grep -oP '[0-9]+(\.[0-9]+)+' | head -1 || true)
+    if [[ -n "$cur" && "$cur" == "$version" ]]; then
+        echo "  ✅ уже актуален: starship $cur"
+        return 0
+    fi
     echo "  последний релиз: v$version"
+
+    local target
+    target="$(arch_for rust)"
 
     tmp=$(mktemp -d)
     trap "rm -rf '$tmp'" RETURN
@@ -106,17 +116,27 @@ install_fzf() {
     #
     # Из-за той догмы fzf не ставился нигде, кроме машин, где его поставили
     # руками пакетом, — в свежем контейнере его просто не было.
-    if have fzf; then
-        echo "  ✅ уже есть: $(fzf --version) ($(command -v fzf))"
+    #
+    # Дальше та же логика, что у starship: системный не трогаем, свой сверяем
+    # по версии.
+    local path arch version tmp cur
+    path="$(command -v fzf || true)"
+    if [[ -n "$path" && "$path" != "$BIN_DIR/fzf" ]]; then
+        echo "  ✅ системный: $("$path" --version) ($path)"
         return 0
     fi
 
-    local arch version tmp
-    arch="$(arch_for plain)"
-
     version=$(github_latest_version junegunn/fzf)
     [[ -n "$version" ]] || { echo "❌ Не определил версию fzf" >&2; return 1; }
+
+    cur=$("$BIN_DIR/fzf" --version 2>/dev/null | grep -oP '[0-9]+(\.[0-9]+)+' | head -1 || true)
+    if [[ -n "$cur" && "$cur" == "$version" ]]; then
+        echo "  ✅ уже актуален: fzf $cur"
+        return 0
+    fi
     echo "  последний релиз: v$version"
+
+    arch="$(arch_for plain)"
 
     tmp=$(mktemp -d)
     trap "rm -rf '$tmp'" RETURN

@@ -149,10 +149,14 @@ list_modules() {
             printf '    %-10s   нет в системе: %s\n' "" "$missing"
         fi
 
-        # Скрипты модуля install.sh НЕ запускает — только показывает. Он
-        # раскладывает симлинки, а не выполняет произвольный код с сетью и sudo.
+        # `update` — особый по соглашению: его запускает сам install.sh (см.
+        # run_module_tools). Остальные скрипты модуля только показываются.
         for s in $scripts; do
-            printf '    %-10s   скрипт: modules/%s/%s\n' "" "$m" "$s"
+            if [[ "$s" == update ]]; then
+                printf '    %-10s   тулы:   modules/%s/%s (ставит install.sh)\n' "" "$m" "$s"
+            else
+                printf '    %-10s   скрипт: modules/%s/%s (запускать руками)\n' "" "$m" "$s"
+            fi
         done
     done
 
@@ -555,7 +559,59 @@ install_plan() {
     echo "  файлов: $((${#PLAN_REL[@]})) — на месте $n_ok, новых $n_new, перелинковано $n_relink, с бэкапом $n_backup"
 }
 
+# ── Внешние тулзы модулей ────────────────────────────────────────────────────
+
+# У модуля может быть скрипт update — он ставит то, что симлинком не разложишь:
+# бинарники в ~/.local/bin, ble.sh, шрифты. Раскладка конфигов без них
+# бесполезна (симлинк на starship.toml при отсутствующем starship не делает
+# ничего), поэтому install.sh их запускает.
+#
+# Два правила, без которых это ломало бы install.sh как инструмент:
+#
+#   1. Сбой установщика НЕ роняет установку. Симлинки к этому моменту уже
+#      разложены и корректны; нет сети — это причина сказать «тулы не
+#      обновились», а не откатывать всё сделанное.
+#   2. Установщик обязан быть дешёвым, когда ставить нечего. Иначе `add sway`
+#      начинает висеть минутами на скачивании шрифтов.
+run_module_tools() {
+    local m script
+    local -a failed=()
+
+    for m in "${MODULES[@]}"; do
+        script="$MODULES_DIR/$m/update"
+        [[ -x "$script" ]] || continue
+
+        if ((DRY_RUN)); then
+            echo "  запустил бы modules/$m/update"
+            continue
+        fi
+
+        echo
+        echo "  ── modules/$m/update ─────────────────────────────"
+        "$script" || failed+=("$m")
+    done
+
+    if [[ ${#failed[@]} -gt 0 ]]; then
+        echo
+        echo "⚠  тулы не встали: ${failed[*]}" >&2
+        echo "   Симлинки разложены, это можно доделать позже:" >&2
+        printf '     ./modules/%s/update\n' "${failed[@]}" >&2
+        return 1
+    fi
+}
+
 # ── Точка входа ──────────────────────────────────────────────────────────────
+
+# --no-tools вынимается из любой позиции: он сочетается и с add, и с --dry-run.
+NO_TOOLS=0
+declare -a ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --no-tools) NO_TOOLS=1 ;;
+        *)          ARGS+=("$arg") ;;
+    esac
+done
+set -- ${ARGS[@]+"${ARGS[@]}"}
 
 case "${1-}" in
     --check)
@@ -589,7 +645,7 @@ case "${1-}" in
         read_profile
         ;;
     *)
-        echo "usage: ${0##*/} [--dry-run|--check|list|add <мод>|remove <мод>]" >&2
+        echo "usage: ${0##*/} [--dry-run|--check|list|add <мод>|remove <мод>] [--no-tools]" >&2
         exit 2
         ;;
 esac
@@ -606,5 +662,13 @@ preflight
 install_plan
 ensure_bashrc_block
 
+tools_rc=0
+if ((NO_TOOLS)); then
+    echo "  тулы модулей пропущены (--no-tools)"
+else
+    run_module_tools || tools_rc=1
+fi
+
 echo
 ((DRY_RUN)) && echo "✅ План проверен, изменений не вносилось" || echo "✅ Готово"
+exit "$tools_rc"

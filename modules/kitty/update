@@ -81,6 +81,15 @@ install_noto_color_emoji() {
     # 💡 (U+1F4A1) и прочие рисуются пустыми квадратами — их нет НИ В ОДНОМ
     # системном шрифте. Их печатают в том числе скрипты из этой самой репы.
     #
+    # Версии у этого шрифта нет вовсе (берём из main), поэтому и сверять не с
+    # чем: если файл на месте и fontconfig видит в нём emoji — считаем готовым.
+    # Обновить принудительно — удалить каталог и запустить снова.
+    if [[ -s "$font_dir/NotoColorEmoji.ttf" ]] &&
+       fc-list ":charset=1F600" family | grep -qi 'noto color emoji'; then
+        echo "  ✅ уже стоит: $font_dir"
+        return 0
+    fi
+
     # У noto-emoji нет релизов с ассетами, поэтому берём ttf прямо из main.
     mkdir -p "$font_dir"
     curl -fsSL -o "$font_dir/NotoColorEmoji.ttf" \

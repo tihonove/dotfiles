@@ -22,10 +22,19 @@ if [[ -n "$latest" && "${current#v}" == "$latest" ]]; then
 fi
 [[ -z "$current" ]] || echo "  установлен $current, последний v$latest"
 
-mkdir -p "$BIN_DIR"
-curl -fsSL -o "$BIN_DIR/devsy" \
+# Качаем во временный каталог и кладём через install, а не curl'ом прямо в
+# ~/.local/bin. Прямая запись ломается о ETXTBSY: devsy почти всегда запущен —
+# он работает ProxyCommand'ом для ssh в воркспейсы, и curl отваливался с
+# «(23) client returned ERROR on write». install же снимает старый инод и
+# создаёт новый, поэтому работающему процессу это безразлично.
+tmp=$(mktemp -d)
+trap "rm -rf '$tmp'" EXIT
+
+curl -fsSL -o "$tmp/devsy" \
     "https://github.com/devsy-org/devsy/releases/latest/download/devsy-${arch}"
-chmod +x "$BIN_DIR/devsy"
+
+mkdir -p "$BIN_DIR"
+install -m 755 "$tmp/devsy" "$BIN_DIR/devsy"
 
 echo "  ✅ devsy $("$BIN_DIR/devsy" --version)"
 echo "  дальше: modules/devsy/setup — настройка ssh-провайдера"
