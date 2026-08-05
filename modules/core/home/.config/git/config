@@ -1,0 +1,98 @@
+# Управляемая часть конфига git. Перенос из ~/dotfiles-old/.gitconfig.
+#
+# Лежит по XDG-пути (~/.config/git/config), а НЕ в ~/.gitconfig — и это не
+# вкусовщина, а способ отдать локальный слой самому git, без include'ов.
+#
+# git читает конфиги в порядке: system -> ~/.config/git/config -> ~/.gitconfig,
+# и побеждает прочитанное позже. Значит ~/.gitconfig естественным образом
+# перекрывает этот файл: рабочая почта, чужие credential-хелперы, всё машинное.
+# Незаданные там ключи проваливаются сюда.
+#
+# Важнее другое: `git config --global` пишет в ~/.gitconfig, ЕСЛИ ТОТ
+# СУЩЕСТВУЕТ, и в ~/.config/git/config, если нет. То есть без локального файла
+# любая правка через `git config --global` уехала бы прямо в репу — ровно та
+# беда, что была с ~/.ssh/config и devsy. Поэтому install.sh следит, чтобы
+# ~/.gitconfig существовал. Подробности — в README, «git».
+#
+# Проверить, кто победил: git config --list --show-origin
+# Именно без --global: с ним git показывает ТОЛЬКО ~/.gitconfig и XDG-слой
+# не видит вовсе.
+
+[user]
+	name = Eugene Tihonov
+	email = tihonov.ea@gmail.com
+
+[init]
+	defaultBranch = main
+
+[column]
+	ui = auto
+[branch]
+	sort = -committerdate
+[tag]
+	sort = version:refname
+
+[diff]
+	algorithm = histogram
+	colorMoved = plain
+	mnemonicPrefix = true
+	renames = true
+
+[push]
+	default = simple
+	autoSetupRemote = true
+	followTags = true
+[fetch]
+	prune = true
+	pruneTags = true
+	all = true
+[pull]
+	rebase = true
+
+[merge]
+	ff = no
+[rebase]
+	autoSquash = true
+	autoStash = true
+	updateRefs = true
+[rerere]
+	enabled = true
+	autoupdate = true
+
+[commit]
+	verbose = true
+[help]
+	autocorrect = prompt
+
+[alias]
+	tree = log --graph --oneline --decorate
+
+# git-lfs. Сам git-lfs ставится пакетом и сейчас не стоит нигде; до тех пор
+# блок безвреден — фильтры трогаются только в репозиториях с lfs-атрибутами.
+# required = true оставлен намеренно: без бинарника такой репозиторий честно
+# упадёт, а не притащит вместо файлов текстовые указатели.
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+
+# Редактор задаёт модуль vexx, а не этот файл: vexx стоит не везде (в
+# devsy-контейнере его нет), и `core.editor = vexx` там ломал бы `git commit`
+# без -m. Отсутствующий include git молча игнорирует, так что на машине без
+# модуля vexx строка просто ничего не делает.
+[include]
+	path = ~/.config/git/vexx.conf
+
+# Чего тут намеренно НЕТ:
+#
+#   excludesfile — не нужен: git сам читает ~/.config/git/ignore, он рядом.
+#
+#   credential-хелперы для github через gh — в старом конфиге они были прописаны
+#   абсолютным путём /usr/bin/gh, которого на этой машине нет вовсе, а в
+#   devsy-контейнере учётками занимается сам devsy (пишет свой хелпер в
+#   ~/.gitconfig). Понадобится — это ровно тот случай, для которого и заведён
+#   локальный слой.
+#
+#   includeIf gitdir:~/ -> ~/.gitconfig.local — больше не нужен: локальный слой
+#   теперь даёт сам git через ~/.gitconfig.
