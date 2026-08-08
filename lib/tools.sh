@@ -19,7 +19,7 @@ github_latest_version() {
 # update-tools.sh падал на aarch64-гарде в первой же строке и не ставил ничего.
 #
 #   arch_for rust   -> aarch64-unknown-linux-musl | x86_64-unknown-linux-musl
-#   arch_for go     -> linux-arm64 | linux-x64
+#   arch_for go     -> linux-arm64 | linux-amd64
 #   arch_for plain  -> arm64 | amd64      (так называет ассеты fzf)
 arch_for() {
     local kind="$1" m
@@ -27,8 +27,11 @@ arch_for() {
     case "$kind:$m" in
         rust:aarch64)  echo aarch64-unknown-linux-musl ;;
         rust:x86_64)   echo x86_64-unknown-linux-musl  ;;
+        # GOARCH для x86_64 — amd64, «x64» в Go-мире не бывает вовсе. Ошибка не
+        # всплывала, потому что единственный потребитель (devsy) ставился только
+        # на aarch64, где вторая строка случайно верна.
         go:aarch64)    echo linux-arm64 ;;
-        go:x86_64)     echo linux-x64   ;;
+        go:x86_64)     echo linux-amd64 ;;
         plain:aarch64) echo arm64 ;;
         plain:x86_64)  echo amd64 ;;
         *) echo "❌ Неизвестная архитектура: $m" >&2; return 1 ;;
