@@ -151,6 +151,65 @@ install_fzf() {
     echo "  ✅ $("$BIN_DIR/fzf" --version)"
 }
 
+install_kitten() {
+    echo "kitten..."
+
+    # Нужен скрипту clip: он гоняет файлы между машинами через TTY-протокол
+    # kitty (kitten transfer / kitten clipboard). Именно поэтому бинарник нужен
+    # на КАЖДОЙ машине, куда ходишь, а не только на рабочей станции.
+    #
+    # Ассет — статический бинарник без распаковки, отдельный от самой kitty:
+    # ставить терминал на сервер или в контейнер незачем, нужен только клиент.
+    #
+    # Системный не трогаем — та же логика, что у starship и fzf. Это важнее, чем
+    # кажется: пакетный kitten идёт в комплекте с локальной kitty и одной с ней
+    # версии, а свежий из релизов может уехать вперёд. Подкладывать его поверх
+    # — верный способ получить скос версий протокола между терминалом и
+    # клиентом на одной машине.
+    local path version tmp cur arch
+    path="$(command -v kitten || true)"
+    if [[ -n "$path" && "$path" != "$BIN_DIR/kitten" ]]; then
+        echo "  ✅ системный: $("$path" --version | head -1) ($path)"
+        return 0
+    fi
+
+    version=$(github_latest_version kovidgoyal/kitty)
+    [[ -n "$version" ]] || { echo "❌ Не определил версию kitty" >&2; return 1; }
+
+    cur=$("$BIN_DIR/kitten" --version 2>/dev/null | grep -oP '[0-9]+(\.[0-9]+)+' | head -1 || true)
+    if [[ -n "$cur" && "$cur" == "$version" ]]; then
+        echo "  ✅ уже актуален: kitten $cur"
+        return 0
+    fi
+    echo "  последний релиз: v$version"
+
+    # Ассеты kitty называют арку как fzf: arm64 / amd64.
+    arch="$(arch_for plain)"
+
+    tmp=$(mktemp -d)
+    trap "rm -rf '$tmp'" RETURN
+
+    curl -fsSL -o "$tmp/kitten" \
+        "https://github.com/kovidgoyal/kitty/releases/download/v${version}/kitten-linux-${arch}"
+
+    mkdir -p "$BIN_DIR"
+    install -m 755 "$tmp/kitten" "$BIN_DIR/kitten"
+
+    echo "  ✅ $("$BIN_DIR/kitten" --version | head -1)"
+}
+
+ensure_clip_spool() {
+    # Спул скрипта clip: сюда `kitten transfer` с удалённой машины складывает
+    # файлы. Каталог обязан существовать ЗАРАНЕЕ — kitten transfer не создаёт
+    # каталог назначения, а удалённая сторона создать его тут не может.
+    #
+    # Заводим на каждой машине, а не только на рабочей станции: «локальной»
+    # оказывается та, за которой ты сейчас сидишь, и это может быть любая.
+    mkdir -p "$HOME/.cache/clip/current"
+}
+
 install_starship
 install_fzf
 install_blesh
+install_kitten
+ensure_clip_spool

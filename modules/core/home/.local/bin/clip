@@ -1,0 +1,401 @@
+#!/usr/bin/env bash
+# Копирование и вставка ФАЙЛОВ между машинами через терминал.
+#
+# Главное, что надо понимать про буфер обмена: он переносит ССЫЛКУ, а не байты.
+# Nautilus по Ctrl+C ничего не копирует — он объявляет себя владельцем selection
+# и по запросу отдаёт `text/uri-list` с путём, а вставляющее приложение само
+# открывает этот путь и читает файл. Поэтому через ssh оно ломается структурно:
+# `file:///home/user/x` валиден только на той машине, которая вставляет.
+#
+# Отвергнутые альтернативы:
+#
+#   wl-copy по ssh          — пишет в буфер УДАЛЁННОЙ машины, а не своей. Ровно
+#                             это уже разобрано в tmux.conf, раздел «Копирование».
+#   демон + unix-сокет      — классика (модель ssh-agent): агент на рабочей
+#     через `ssh -R`          станции, сокет проброшен в удалёнку. Работает, но
+#                             требует правки ssh-конфига на каждый хост, не
+#                             переживает `docker exec` без bind-mount сокета, и
+#                             отдаёт каждой среде право читать твой буфер молча.
+#   allow_remote_control    — запрещено решением в README, «Сознательно не
+#                             переносим»: не отдаём удалённому хосту управление
+#                             локальным kitty. TTY-киттены его и не требуют.
+#   base64 через OSC 52     — лимиты у терминалов дикие и разные (VTE молча
+#                             режет на 4096 байт), для файлов не годится.
+#
+# Взамен — транспорт поверх TTY. `kitten transfer` и `kitten clipboard` общаются
+# с локальной kitty escape-последовательностями, а TTY это прозрачная труба:
+#
+#   процесс в контейнере → PTY контейнера → dockerd → docker client на VM
+#      → PTY ssh-сессии → sshd → ssh → локальная kitty
+#
+# Работает сквозь любую вложенность, включая jump-хост и `docker exec`, без
+# единого сокета и без правок ssh-конфига. Требует ровно одного: бинарник
+# `kitten` внутри той среды (статический, ставится modules/core/update).
+#
+# Байты и ссылка едут разными каналами: файлы — через `kitten transfer`, а в
+# буфер кладётся только манифест. Спул — `~/.cache/clip/current` на машине, за
+# которой ты сидишь; она единственная стабильная точка в схеме.
+#
+# Незнание чужого $HOME снимается правилом kitten transfer: относительные пути
+# на ПРИНИМАЮЩЕЙ стороне резолвятся от домашнего каталога. Поэтому удалённая
+# сторона пишет в `.cache/clip/current/`, не зная, где локальный HOME.
+#
+# Использование:
+#   clip copy <файл>...     скопировать файлы
+#   clip copy               скопировать текст со stdin
+#   clip paste [каталог]    вставить в каталог (по умолчанию текущий)
+#   clip list               показать, что сейчас в буфере
+#   clip doctor             показать, что за среда определилась и почему
+
+set -euo pipefail
+
+# Путь спула ОТНОСИТЕЛЬНО $HOME: именно в таком виде его понимает kitten
+# transfer на принимающей стороне. Абсолютный вариант годится только локально.
+readonly SPOOL_REL=".cache/clip/current"
+readonly SPOOL="$HOME/$SPOOL_REL"
+
+# Первая строка манифеста в буфере. По ней `clip paste` отличает «в буфере лежит
+# опись спула» от обычного текста, который пользователь скопировал мышью.
+readonly MARK="#clip-spool-v1"
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+die() { echo "❌ $*" >&2; exit 1; }
+
+# Проверять управляющий терминал через `[[ -r /dev/tty ]]` нельзя: файл в
+# devtmpfs есть всегда, и тест проходит даже когда терминала у процесса нет, —
+# а открытие тут же валится с ENXIO. Проверяем единственным честным способом:
+# пробуем открыть.
+has_tty() { ( : < /dev/tty ) 2>/dev/null; }
+
+# %20 → пробел, %D1%82 → байты UTF-8. Без этого uri-list разъезжается на любом
+# имени с пробелом или кириллицей, а такие встречаются постоянно.
+uri_decode() {
+    printf '%b' "$(printf '%s' "$1" | sed 's/%\([0-9A-Fa-f]\{2\}\)/\\x\1/g')"
+}
+
+# ── Определение среды ─────────────────────────────────────────────────────────
+# Возвращает: local | kitty | plain
+#
+# Почему не по $TERM и не по $KITTY_PID: внутри tmux $TERM это tmux-256color, а
+# $KITTY_PID по ssh не пробрасывается вовсе. Единственный надёжный признак
+# «я могу говорить с локальной kitty» — наличие бинарника kitten и живого
+# управляющего терминала.
+#
+# Проверять терминал через `kitten query-terminal` заманчиво, но это лишний
+# round-trip на КАЖДЫЙ вызов команды, которой пользуются постоянно. Поэтому
+# пробуем действием, а разбор «почему не работает» вынесен в `clip doctor`.
+detect_env() {
+    if [[ -n "${CLIP_ENV:-}" ]]; then
+        echo "$CLIP_ENV"
+        return
+    fi
+    if [[ -n "${WAYLAND_DISPLAY:-}" && -z "${SSH_CONNECTION:-}" ]] && have wl-copy; then
+        echo local
+        return
+    fi
+    if have kitten && has_tty; then
+        echo kitty
+        return
+    fi
+    echo plain
+}
+
+# ── Вспомогательное ───────────────────────────────────────────────────────────
+
+# Имя файла, пришедшее с той стороны, — недоверенный ввод. Режем каталоги,
+# отклоняем `..` и пустое: иначе `clip paste` с именем ../../.ssh/authorized_keys
+# пишет куда не просили (zip-slip).
+safe_name() {
+    local n="${1##*/}"
+    case "$n" in
+        ''|.|..) die "недопустимое имя файла: $1" ;;
+    esac
+    printf '%s\n' "$n"
+}
+
+# Свободное имя в каталоге: file.txt → file-1.txt → file-2.txt.
+# Молча перезаписывать чужие файлы нельзя — вставка часто идёт в рабочий каталог.
+free_path() {
+    local dir="$1" name="$2" base ext n=1
+    if [[ ! -e "$dir/$name" ]]; then
+        printf '%s\n' "$dir/$name"
+        return
+    fi
+    if [[ "$name" == *.* && "$name" != .* ]]; then
+        base="${name%.*}"; ext=".${name##*.}"
+    else
+        base="$name"; ext=""
+    fi
+    while [[ -e "$dir/$base-$n$ext" ]]; do
+        n=$(( n + 1 ))
+    done
+    printf '%s\n' "$dir/$base-$n$ext"
+}
+
+# Процентное кодирование для file:// URI. Пробелы и кириллица в именах файлов
+# встречаются постоянно, а uri-list без экранирования на них разъезжается.
+#
+# LC_ALL=C здесь обязателен: кодировать надо БАЙТЫ UTF-8, а не кодпоинты. Без
+# него bash итерирует по символам, и `printf '%02X'` на 'п' (U+043F) печатает
+# трёхзначный %43F вместо правильных %D0%BF. Проверено против urllib.parse.quote
+# — с этой строкой вывод совпадает байт в байт.
+uri_escape() {
+    local s="$1" out="" i c
+    local LC_ALL=C
+    for (( i = 0; i < ${#s}; i++ )); do
+        c="${s:i:1}"
+        case "$c" in
+            [A-Za-z0-9/._~-]) out+="$c" ;;
+            *) out+="$(printf '%%%02X' "'$c")" ;;
+        esac
+    done
+    printf '%s\n' "$out"
+}
+
+# Текст в системный буфер через OSC 52. Единственный способ, не требующий ни
+# бинарников, ни сокетов, — работает даже в голом контейнере.
+osc52_copy() {
+    local b64
+    b64=$(base64 -w0)
+    # Внутри tmux последовательность надо обернуть в passthrough, иначе tmux
+    # съест её сам. В tmux.conf для этого уже стоит allow-passthrough on.
+    if [[ -n "${TMUX:-}" ]]; then
+        printf '\033Ptmux;\033\033]52;c;%s\007\033\\' "$b64" > /dev/tty
+    else
+        printf '\033]52;c;%s\007' "$b64" > /dev/tty
+    fi
+}
+
+# ── copy ──────────────────────────────────────────────────────────────────────
+
+copy_text() {
+    local env="$1" text
+    text=$(cat)
+    # Пустой ввод буфер не трогает: затирать пустотой то, что там лежало, —
+    # обидная потеря, а `clip copy < /dev/null` случается по недосмотру.
+    [[ -n "$text" ]] || die "на входе пусто — буфер не трогаю"
+    case "$env" in
+        local) printf '%s' "$text" | wl-copy ;;
+        *)     printf '%s' "$text" | osc52_copy ;;
+    esac
+    echo "✅ текст скопирован (${#text} б)"
+}
+
+copy_files_local() {
+    # Локально файлы уже лежат по валидным путям — спул не нужен, достаточно
+    # отдать ссылки. wl-copy умеет ровно ОДИН MIME-тип за вызов, поэтому берём
+    # text/uri-list: его понимают загрузка в браузере, GIMP, Thunar и прочие.
+    # GTK-специфичный x-special/gnome-copied-files сюда не влезает — это плата
+    # за одну команду вместо демона, см. README.
+    local f uris="" abs
+    for f in "$@"; do
+        [[ -e "$f" ]] || die "нет такого файла: $f"
+        abs=$(realpath -- "$f")
+        uris+="file://$(uri_escape "$abs")"$'\r\n'
+    done
+    printf '%s' "$uris" | wl-copy -t text/uri-list
+    echo "✅ скопировано файлов: $#"
+}
+
+copy_files_kitty() {
+    # Байты уезжают в спул на локальной машине. Каталог должен там СУЩЕСТВОВАТЬ:
+    # kitten transfer не создаёт каталог назначения, а создать его отсюда мы не
+    # можем. Его заводит modules/core/update на каждой машине.
+    local f names=""
+    for f in "$@"; do
+        [[ -e "$f" ]] || die "нет такого файла: $f"
+    done
+
+    kitten transfer "$@" "$SPOOL_REL/" \
+        || die "передача не удалась. Терминал точно kitty? Проверь: clip doctor"
+
+    for f in "$@"; do
+        names+="$(basename -- "$f")"$'\n'
+    done
+
+    # В буфер кладём только опись: она крошечная и заведомо влезает в лимиты
+    # OSC 52, тогда как сами файлы могут быть любого размера.
+    printf '%s\n%s' "$MARK" "$names" | osc52_copy
+    echo "✅ отправлено в спул: $# шт."
+}
+
+cmd_copy() {
+    local env
+    env=$(detect_env)
+
+    if [[ $# -eq 0 ]]; then
+        [[ -t 0 ]] && die "нечего копировать: укажи файлы или подай текст на stdin"
+        copy_text "$env"
+        return
+    fi
+
+    case "$env" in
+        local) copy_files_local "$@" ;;
+        kitty) copy_files_kitty "$@" ;;
+        plain) die "здесь нет ни Wayland, ни kitten — файлы копировать нечем.
+   Текст работает: clip copy < файл. Разбор среды: clip doctor" ;;
+    esac
+}
+
+# ── paste ─────────────────────────────────────────────────────────────────────
+
+# Список локальных путей из text/uri-list в буфере. Пусто — значит в буфере не
+# файлы.
+uris_from_clipboard_local() {
+    wl-paste -t text/uri-list 2>/dev/null | tr -d '\r' | grep -E '^file://' || true
+}
+
+paste_local() {
+    local dest="$1" uris n=0 u path name target
+    uris=$(uris_from_clipboard_local)
+
+    if [[ -n "$uris" ]]; then
+        while IFS= read -r u; do
+            [[ -n "$u" ]] || continue
+            path=$(uri_decode "${u#file://}")
+            [[ -e "$path" ]] || { echo "⚠ пропущен, нет файла: $path" >&2; continue; }
+            name=$(safe_name "$path")
+            target=$(free_path "$dest" "$name")
+            cp -r -- "$path" "$target"
+            echo "  $name"
+            n=$(( n + 1 ))
+        done <<< "$uris"
+        echo "✅ вставлено: $n"
+        return
+    fi
+
+    # Не uri-list — возможно, манифест спула от удалённой машины.
+    local buf
+    buf=$(wl-paste 2>/dev/null || true)
+    if [[ "$buf" == "$MARK"* ]]; then
+        paste_from_spool "$dest" "$buf"
+        return
+    fi
+
+    die "в буфере не файлы. Посмотреть, что там: clip list"
+}
+
+# Манифест положила удалённая машина, а байты уже лежат в локальном спуле.
+paste_from_spool() {
+    local dest="$1" buf="$2" name target n=0
+    while IFS= read -r name; do
+        [[ -n "$name" ]] || continue
+        name=$(safe_name "$name")
+        [[ -e "$SPOOL/$name" ]] || { echo "⚠ нет в спуле: $name" >&2; continue; }
+        target=$(free_path "$dest" "$name")
+        cp -r -- "$SPOOL/$name" "$target"
+        echo "  $name"
+        n=$(( n + 1 ))
+    done <<< "$(printf '%s' "$buf" | tail -n +2)"
+    echo "✅ вставлено из спула: $n"
+}
+
+paste_kitty() {
+    local dest="$1" buf uris
+
+    # Сначала пробуем uri-list: так выглядит буфер, если файлы скопировали
+    # локально в файловом менеджере или через `clip copy`.
+    uris=$(kitten clipboard -g -m text/uri-list /dev/stdout 2>/dev/null \
+           | tr -d '\r' | grep -E '^file://' || true)
+
+    if [[ -n "$uris" ]]; then
+        # Пути локальные, поэтому тянем байты upload'ом: для kitten transfer
+        # «upload» это «с машины терминала на машину, где запущен kitten».
+        local paths=() u
+        while IFS= read -r u; do
+            [[ -n "$u" ]] || continue
+            paths+=( "$(uri_decode "${u#file://}")" )
+        done <<< "$uris"
+        kitten transfer --direction=upload "${paths[@]}" "$dest/" \
+            || die "передача не удалась. Разбор среды: clip doctor"
+        echo "✅ вставлено файлов: ${#paths[@]}"
+        return
+    fi
+
+    # Иначе — либо манифест спула, либо просто текст.
+    buf=$(kitten clipboard -g 2>/dev/null || true)
+    if [[ "$buf" == "$MARK"* ]]; then
+        local names=() name
+        while IFS= read -r name; do
+            [[ -n "$name" ]] || continue
+            names+=( "$SPOOL_REL/$(safe_name "$name")" )
+        done <<< "$(printf '%s' "$buf" | tail -n +2)"
+        kitten transfer --direction=upload "${names[@]}" "$dest/" \
+            || die "передача не удалась. Разбор среды: clip doctor"
+        echo "✅ вставлено из спула: ${#names[@]}"
+        return
+    fi
+
+    die "в буфере не файлы. Посмотреть, что там: clip list"
+}
+
+cmd_paste() {
+    local dest="${1:-.}" env
+    [[ -d "$dest" ]] || die "нет такого каталога: $dest"
+    env=$(detect_env)
+    case "$env" in
+        local) paste_local "$dest" ;;
+        kitty) paste_kitty "$dest" ;;
+        plain) die "здесь нет ни Wayland, ни kitten — вставить файлы нечем.
+   Разбор среды: clip doctor" ;;
+    esac
+}
+
+# ── list / doctor ─────────────────────────────────────────────────────────────
+
+cmd_list() {
+    local env buf
+    env=$(detect_env)
+    case "$env" in
+        local)
+            echo "MIME-типы в буфере:"
+            wl-paste -l 2>/dev/null | sed 's/^/  /' || echo "  (буфер пуст)"
+            buf=$(wl-paste 2>/dev/null || true)
+            ;;
+        kitty)
+            echo "MIME-типы в буфере:"
+            kitten clipboard -g -m . /dev/stdout 2>/dev/null | sed 's/^/  /' \
+                || echo "  (не удалось прочитать)"
+            buf=$(kitten clipboard -g 2>/dev/null || true)
+            ;;
+        plain)
+            die "здесь буфер не прочитать: нет ни Wayland, ни kitten"
+            ;;
+    esac
+    if [[ "$buf" == "$MARK"* ]]; then
+        echo "Опись спула ($SPOOL):"
+        printf '%s' "$buf" | tail -n +2 | sed 's/^/  /'
+    fi
+}
+
+cmd_doctor() {
+    echo "Среда:            $(detect_env)"
+    echo "  WAYLAND_DISPLAY ${WAYLAND_DISPLAY:-(пусто)}"
+    echo "  SSH_CONNECTION  ${SSH_CONNECTION:+есть}${SSH_CONNECTION:-(пусто)}"
+    echo "  TMUX            ${TMUX:+есть}${TMUX:-(пусто)}"
+    echo "  TERM            ${TERM:-(пусто)}"
+    echo "  wl-copy         $(command -v wl-copy || echo '—')"
+    echo "  kitten          $(command -v kitten || echo '—')"
+    echo "  /dev/tty        $(has_tty && echo 'открывается' || echo '— (нет управляющего терминала)')"
+    echo "Спул:             $SPOOL $([[ -d "$SPOOL" ]] && echo '(есть)' || echo '(НЕТ — создаст core/update)')"
+
+    if have kitten && has_tty; then
+        if kitten query-terminal --wait-for=2 name >/dev/null 2>&1; then
+            echo "Терминал:         отвечает, киттены доступны"
+        else
+            echo "Терминал:         не отвечает — это не kitty или мешает мультиплексор"
+        fi
+    fi
+}
+
+case "${1:-}" in
+    copy)   shift; cmd_copy "$@" ;;
+    paste)  shift; cmd_paste "$@" ;;
+    list)   cmd_list ;;
+    doctor) cmd_doctor ;;
+    *)
+        echo "Использование: clip {copy <файл>... | paste [каталог] | list | doctor}" >&2
+        exit 2
+        ;;
+esac
