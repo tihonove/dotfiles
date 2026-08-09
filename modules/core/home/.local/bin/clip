@@ -40,6 +40,12 @@
 # на ПРИНИМАЮЩЕЙ стороне резолвятся от домашнего каталога. Поэтому удалённая
 # сторона пишет в `.cache/clip/current/`, не зная, где локальный HOME.
 #
+# Картинки. `clip paste` понимает не только ссылки на файлы, но и поток
+# image/* — именно так снимок попадает в буфер из satty по Enter: байты без
+# всякого имени файла. Имя мы придумываем сами (clip-ГГГГММДД-ЧЧММСС.png),
+# расширение берём из MIME. Ссылки на файлы имеют приоритет над картинкой: если
+# в буфере лежит uri-list, значит файл уже существует и выдумывать имя незачем.
+#
 # Использование:
 #   clip copy <файл>...     скопировать файлы
 #   clip copy               скопировать текст со stdin
@@ -153,6 +159,25 @@ uri_escape() {
     printf '%s\n' "$out"
 }
 
+# Расширение по MIME-типу картинки. Нужно, потому что в буфере лежит поток
+# байтов без имени: satty по Enter кладёт снимок как image/png, а имени файла у
+# него нет вовсе — мы его придумываем.
+image_ext_for_mime() {
+    case "$1" in
+        image/png)     echo png ;;
+        image/jpeg)    echo jpg ;;
+        image/webp)    echo webp ;;
+        image/gif)     echo gif ;;
+        image/tiff)    echo tiff ;;
+        image/bmp)     echo bmp ;;
+        image/svg+xml) echo svg ;;
+        *)             echo bin ;;
+    esac
+}
+
+# Имя для картинки из буфера: clip-20260809-161500.png
+image_name() { printf 'clip-%s.%s\n' "$(date +%Y%m%d-%H%M%S)" "$1"; }
+
 # Текст в системный буфер через OSC 52. Единственный способ, не требующий ни
 # бинарников, ни сокетов, — работает даже в голом контейнере.
 osc52_copy() {
@@ -265,7 +290,18 @@ paste_local() {
         return
     fi
 
-    # Не uri-list — возможно, манифест спула от удалённой машины.
+    # Не uri-list — возможно, картинка. Снимок из satty приходит именно так:
+    # поток image/png без всякого имени файла.
+    local mime target
+    mime=$(wl-paste -l 2>/dev/null | grep -m1 -E '^image/' || true)
+    if [[ -n "$mime" ]]; then
+        target=$(free_path "$dest" "$(image_name "$(image_ext_for_mime "$mime")")")
+        wl-paste -t "$mime" > "$target"
+        echo "✅ картинка сохранена: $target ($mime, $(stat -c%s "$target") б)"
+        return
+    fi
+
+    # Иначе — возможно, манифест спула от удалённой машины.
     local buf
     buf=$(wl-paste 2>/dev/null || true)
     if [[ "$buf" == "$MARK"* ]]; then
@@ -273,7 +309,7 @@ paste_local() {
         return
     fi
 
-    die "в буфере не файлы. Посмотреть, что там: clip list"
+    die "в буфере не файлы и не картинка. Посмотреть, что там: clip list"
 }
 
 # Манифест положила удалённая машина, а байты уже лежат в локальном спуле.
@@ -313,6 +349,19 @@ paste_kitty() {
         return
     fi
 
+    # Картинка в буфере: тянем её сюда файлом. Отдельная ветка от uri-list —
+    # там в буфере ссылка на существующий файл, а тут поток байтов без имени.
+    local mime target
+    mime=$(kitten clipboard -g -m . /dev/stdout 2>/dev/null \
+           | grep -m1 -E '^image/' || true)
+    if [[ -n "$mime" ]]; then
+        target=$(free_path "$dest" "$(image_name "$(image_ext_for_mime "$mime")")")
+        kitten clipboard -g -m "$mime" "$target" \
+            || die "не удалось забрать картинку. Разбор среды: clip doctor"
+        echo "✅ картинка сохранена: $target ($mime, $(stat -c%s "$target") б)"
+        return
+    fi
+
     # Иначе — либо манифест спула, либо просто текст.
     buf=$(kitten clipboard -g 2>/dev/null || true)
     if [[ "$buf" == "$MARK"* ]]; then
@@ -327,7 +376,7 @@ paste_kitty() {
         return
     fi
 
-    die "в буфере не файлы. Посмотреть, что там: clip list"
+    die "в буфере не файлы и не картинка. Посмотреть, что там: clip list"
 }
 
 cmd_paste() {
