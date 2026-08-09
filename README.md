@@ -36,7 +36,7 @@ Payload разложен по модулям, чтобы база вставал
 |---|---|---|
 | `core` | bash, ble.sh, fzf, starship, tmux, палитра темы (`theme-colors`) | — |
 | `kitty` | терминал, шрифты (`fontconfig`), `ssh.conf` для kitten ssh | `kitty` |
-| `sway` | сессия целиком: sway, waybar, wofi, kanshi, тема, мониторы | `sway waybar wofi kanshi` |
+| `sway` | сессия целиком: sway, waybar, wofi, kanshi, тема, мониторы | `sway waybar wofi kanshi wtype` |
 | `devsy` | `~/.ssh/config` + установка CLI и настройка ssh-провайдера | — |
 | `vexx` | только скрипт обновления бинарника | — |
 

@@ -85,6 +85,24 @@ client.background       #1e1e2e
 # Блочная форма for_window в sway не поддерживается — команды через запятую.
 for_window [app_id="bluetuith"] floating enable, resize set 900 600, move position center
 for_window [app_id="^chrome-.*"] border none
+# satty подгоняет окно под размер снимка — в тайлинге от этого нет толку.
+for_window [app_id="com.gabm.satty"] floating enable, move position center
+
+# Клик по уведомлению должен открывать приложение. Цепочка: dunst по левой кнопке
+# шлёт ActionInvoked обратно отправителю, тот сам показывает нужное место (Slack
+# — конкретный тред, а не просто окно) и просит активацию через xdg-activation.
+# Дефолт sway на такой запрос — `urgent`: окно лишь подсвечивается в панели, а на
+# другом воркспейсе этого не видно вовсе. `focus` заставляет реально переключиться.
+#
+# Цена: фокус теперь может увести любой клиент, а не только тот, чьё уведомление
+# ты нажал. Если начнёт выхватывать посреди набора текста — вернуть `urgent`
+# (или `smart`: переключается, только если окно уже на экране) и ходить по
+# подсветке биндом $mod+X ниже.
+focus_on_window_activation focus
+
+# Прыгнуть на окно, которое просит внимания. Нужен как раз при `urgent`/`smart`,
+# но полезен и так — например, если уведомление уже уползло из виду.
+bindsym $mod+x [urgent=latest] focus
 
 ### Автозапуск
 # Прокинуть переменные сессии в dbus/systemd — нужно панели и порталам.
@@ -175,6 +193,14 @@ bindsym --to-code $mod+Shift+9 move container to workspace number 9
 bindsym --to-code $mod+Ctrl+h workspace prev
 bindsym --to-code $mod+Ctrl+l workspace next
 
+### Вкладки внутри окна: вкладки Chrome, окна tmux (в том числе по ssh)
+# Третий уровень навигации, самый внутренний: Ctrl — столы, без модификатора —
+# окна и табы sway, Alt — то, что внутри окна. Скрипт не разбирает, кто в
+# фокусе: он синтезирует Ctrl+PageUp/PageDown, а это общая комбинация
+# переключения вкладок — почему так, расписано в самом content-tab.
+bindsym --to-code $mod+Mod1+h exec content-tab prev
+bindsym --to-code $mod+Mod1+l exec content-tab next
+
 ### Раскладка окон
 bindsym --to-code $mod+g splith
 bindsym --to-code $mod+Shift+v splitv
@@ -211,8 +237,15 @@ bindsym --locked XF86AudioMute        exec pactl set-sink-mute   @DEFAULT_SINK@ 
 bindsym --locked XF86MonBrightnessUp   exec brightnessctl set 5%+
 bindsym --locked XF86MonBrightnessDown exec brightnessctl set 5%-
 
+### Скриншоты
+# Вся логика в ~/.local/bin/shot: grim снимает, satty открывает для рисования.
+# Enter в satty — скопировать в буфер и закрыть, Ctrl+S — сохранить в
+# ~/Pictures/Screenshots, Escape — выкинуть.
+bindsym --to-code Print       exec shot        # выделить область мышью
+bindsym --to-code Shift+Print exec shot -w     # окно в фокусе
+bindsym --to-code $mod+Print  exec shot -f     # весь экран
+
 # Не перенесено из старого конфига — нужны пакеты, которых не ставили:
 #   $mod+Tab MRU-переключение — демон ~/.config/sway/mru-switch.py
 #   $mod+v история буфера      — cliphist + wtype + лаунчер
-#   Print / $mod+Print         — grim + slurp (+ swappy для аннотаций)
 #   Ctrl+Alt+q блокировка      — swaylock
