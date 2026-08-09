@@ -64,6 +64,20 @@ readonly SPOOL="$HOME/$SPOOL_REL"
 # опись спула» от обычного текста, который пользователь скопировал мышью.
 readonly MARK="#clip-spool-v1"
 
+# Идентификатор партии. Нужен из-за менеджеров истории буфера (cliphist и
+# родня): они сохраняют опись как обычный текст, и через час её можно достать
+# из истории — а спул к тому времени перезаписан другим копированием. Имена в
+# описи совпадут, файлы на месте, и `clip paste` молча отдал бы НЕ ТЕ файлы.
+# Поэтому опись несёт id партии, он же уезжает в спул файлом .clip-id, и при
+# вставке они обязаны совпасть. Не совпали — отказ, а не тихая подмена.
+readonly IDFILE=".clip-id"
+
+new_id() { printf '%s-%s-%s\n' "$(date +%Y%m%d%H%M%S)" "$$" "$RANDOM"; }
+
+# Второе поле первой строки описи. `cut -s` вернёт пустое, если поля нет вовсе,
+# — так отличаем опись от старой версии clip.
+manifest_id() { printf '%s' "$1" | head -1 | cut -s -d' ' -f2; }
+
 have() { command -v "$1" >/dev/null 2>&1; }
 
 die() { echo "❌ $*" >&2; exit 1; }
@@ -227,12 +241,19 @@ copy_files_kitty() {
     # Байты уезжают в спул на локальной машине. Каталог должен там СУЩЕСТВОВАТЬ:
     # kitten transfer не создаёт каталог назначения, а создать его отсюда мы не
     # можем. Его заводит modules/core/update на каждой машине.
-    local f names=""
+    local f names="" id tmp
     for f in "$@"; do
         [[ -e "$f" ]] || die "нет такого файла: $f"
     done
 
-    kitten transfer "$@" "$SPOOL_REL/" \
+    # id партии едет вместе с файлами отдельным файлом — иначе на приёмной
+    # стороне нечем отличить свежую опись от вытащенной из истории буфера.
+    id=$(new_id)
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' RETURN
+    printf '%s\n' "$id" > "$tmp/$IDFILE"
+
+    kitten transfer "$@" "$tmp/$IDFILE" "$SPOOL_REL/" \
         || die "передача не удалась. Терминал точно kitty? Проверь: clip doctor"
 
     for f in "$@"; do
@@ -241,7 +262,7 @@ copy_files_kitty() {
 
     # В буфер кладём только опись: она крошечная и заведомо влезает в лимиты
     # OSC 52, тогда как сами файлы могут быть любого размера.
-    printf '%s\n%s' "$MARK" "$names" | osc52_copy
+    printf '%s %s\n%s' "$MARK" "$id" "$names" | osc52_copy
     echo "✅ отправлено в спул: $# шт."
 }
 
@@ -314,7 +335,14 @@ paste_local() {
 
 # Манифест положила удалённая машина, а байты уже лежат в локальном спуле.
 paste_from_spool() {
-    local dest="$1" buf="$2" name target n=0
+    local dest="$1" buf="$2" name target n=0 want have=""
+    want=$(manifest_id "$buf")
+    [[ -n "$want" ]] || die "опись без идентификатора — она от старой версии clip"
+    if [[ -r "$SPOOL/$IDFILE" ]]; then have=$(< "$SPOOL/$IDFILE"); fi
+    [[ "$want" == "$have" ]] || die "опись устарела: спул уже перезаписан другим
+   копированием. Похоже, опись достали из истории буфера обмена. Скопируй
+   заново — иначе вставились бы чужие файлы."
+
     while IFS= read -r name; do
         [[ -n "$name" ]] || continue
         name=$(safe_name "$name")
@@ -365,14 +393,40 @@ paste_kitty() {
     # Иначе — либо манифест спула, либо просто текст.
     buf=$(kitten clipboard -g 2>/dev/null || true)
     if [[ "$buf" == "$MARK"* ]]; then
-        local names=() name
+        local names=() name want have="" tmp n=0 f
+        want=$(manifest_id "$buf")
+        [[ -n "$want" ]] || die "опись без идентификатора — она от старой версии clip"
+
         while IFS= read -r name; do
             [[ -n "$name" ]] || continue
             names+=( "$SPOOL_REL/$(safe_name "$name")" )
         done <<< "$(printf '%s' "$buf" | tail -n +2)"
-        kitten transfer --direction=upload "${names[@]}" "$dest/" \
+
+        # Тянем во временный каталог рядом с целевым. Пока id не сверен, класть
+        # файлы в рабочий каталог нельзя: опись могла приехать из истории буфера
+        # и указывать на давно перезаписанный спул. Забирать .clip-id отдельной
+        # передачей не годится — это второй попап подтверждения на каждую
+        # вставку, поэтому берём его той же пачкой.
+        tmp=$(mktemp -d "$dest/.clip-XXXXXX")
+        trap 'rm -rf "$tmp"' RETURN
+
+        kitten transfer --direction=upload "${names[@]}" "$SPOOL_REL/$IDFILE" "$tmp/" \
             || die "передача не удалась. Разбор среды: clip doctor"
-        echo "✅ вставлено из спула: ${#names[@]}"
+
+        if [[ -r "$tmp/$IDFILE" ]]; then have=$(< "$tmp/$IDFILE"); fi
+        [[ "$want" == "$have" ]] || die "опись устарела: спул уже перезаписан другим
+   копированием. Похоже, опись достали из истории буфера обмена. Скопируй
+   заново — иначе вставились бы чужие файлы."
+
+        rm -f "$tmp/$IDFILE"
+        for f in "$tmp"/*; do
+            [[ -e "$f" ]] || continue
+            target=$(free_path "$dest" "$(basename -- "$f")")
+            mv -- "$f" "$target"
+            echo "  $(basename -- "$target")"
+            n=$(( n + 1 ))
+        done
+        echo "✅ вставлено из спула: $n"
         return
     fi
 
