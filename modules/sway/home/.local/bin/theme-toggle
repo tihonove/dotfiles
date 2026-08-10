@@ -48,6 +48,11 @@ WAYBAR_CSS="$HOME/.config/waybar/colors.css"
 WOFI_STYLE_IN="$HOME/.config/wofi/style.css.in"
 WOFI_STYLE="$HOME/.config/wofi/style.css"
 
+# btop: имя файла фиксированное, на него ссылается color_theme в btop.conf.
+# Меняется только содержимое — так конфиг btop не приходится трогать при
+# переключении, а он к правкам извне чувствителен (см. комментарий в btop.conf).
+BTOP_THEME="$HOME/.config/btop/themes/catppuccin.theme"
+
 # Темы GTK3. Если однажды поставишь другую пару — менять тут.
 GTK_LIGHT=Adwaita
 GTK_DARK=Adwaita-dark
@@ -116,6 +121,16 @@ refresh() {
     # случаях), а зоны клика после него разъезжались — вся панель начинала
     # работать как один модуль. Подробности — ~/.system-setup/theme-light-dark.md
     pkill -USR2 -x waybar 2>/dev/null || true
+
+    # btop: тему он читает при старте, перечитать по сигналу не умеет вовсе —
+    # ни SIGUSR, ни слежения за файлом. Поэтому пинать некого: уже запущенный
+    # btop доживёт в старой палитре до перезапуска (или до ручного выбора темы
+    # в Options), а новый возьмёт свежую. Для мониторилки это терпимо.
+    #
+    # Каталог создаём здесь: сам btop его не заводит, а из dotfiles в ~/.config/
+    # btop приезжает только btop.conf, без подкаталога themes.
+    mkdir -p "$(dirname "$BTOP_THEME")"
+    "$COLORS" btop | write_atomic "$BTOP_THEME"
 }
 
 apply() {

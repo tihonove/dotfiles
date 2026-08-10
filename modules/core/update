@@ -208,8 +208,34 @@ ensure_clip_spool() {
     mkdir -p "$HOME/.cache/clip/current"
 }
 
+ensure_btop_theme() {
+    # Тема btop — производный файл, как colors.css у панели: btop.conf ссылается
+    # на неё по фиксированному имени, а содержимое пишет генератор палитры.
+    #
+    # На машине со sway её обновляет `theme-toggle refresh` при каждом
+    # переключении темы. Здесь — чтобы файл был и там, где refresh звать некому:
+    # в контейнере и на сервере sway нет, а btop есть, и без этой строки он
+    # молча свалился бы в тему Default, ссылку в конфиге просто не найдя.
+    #
+    # Тема берётся текущая. На машине без gsettings это всегда светлая (так
+    # устроен theme-colors), и для контейнера это, честно говоря, не идеал —
+    # но выбирать за пользователя тёмную здесь было бы враньём: раз спросить
+    # некого, единственный внятный ответ даёт сам генератор палитры.
+    local colors="$HOME/.local/bin/theme-colors"
+    local dest="$HOME/.config/btop/themes/catppuccin.theme"
+
+    # Симлинки install.sh раскладывает раньше, чем зовёт этот скрипт, так что
+    # генератор на месте. Проверка — на случай запуска update руками из репы,
+    # когда установки ещё не было.
+    [[ -x "$colors" ]] || { echo "  ⚠️  btop: нет $colors, тема не сгенерирована"; return 0; }
+
+    mkdir -p "$(dirname "$dest")"
+    "$colors" btop >"$dest"
+}
+
 install_starship
 install_fzf
 install_blesh
 install_kitten
 ensure_clip_spool
+ensure_btop_theme

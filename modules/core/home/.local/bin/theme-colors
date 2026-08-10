@@ -11,8 +11,11 @@
 #   theme-colors sway    — команды client.*/output; theme-toggle refresh скармливает
 #                          их swaymsg построчно, живому sway, без reload
 #   theme-colors css     — блок @define-color для waybar и wofi; у GTK-CSS
-#                          генератора нет, поэтому единственное место, где
-#                          результат ложится на диск файлом (см. theme-toggle refresh)
+#                          генератора нет, поэтому результат ложится на диск
+#                          файлом (см. theme-toggle refresh)
+#   theme-colors btop    — файл .theme для btop; тоже на диск, по фиксированному
+#                          пути ~/.config/btop/themes/catppuccin.theme, на который
+#                          ссылается btop.conf (см. theme-toggle refresh)
 #
 # Вторым аргументом можно задать тему явно — удобно, чтобы сравнить два вывода,
 # не переключая сессию: `diff <(theme-colors css dark) <(theme-colors css light)`.
@@ -172,6 +175,78 @@ emit_css() {
     done
 }
 
+emit_btop() {
+    # Формат темы btop — присваивания в ассоциативный массив theme[...].
+    # Ключей около сорока, но половина из них — тройки start/mid/end: каждый
+    # график и каждый индикатор в btop красится градиентом по высоте столбика.
+    # Где градиент не нужен, mid и end оставляются пустыми — тогда цвет один.
+    #
+    # Роли расставлены так, чтобы цвет НЁС смысл, а не просто попадал в палитру:
+    #
+    #   рамки боксов  — четыре разных акцента, чтобы четыре области взгляд
+    #                   различал по цвету, а не по чтению заголовков;
+    #   температуры   — green→yellow→red, единственный градиент, который читается
+    #   и загрузка cpu  однозначно: выше столбик — тревожнее цвет;
+    #   память и сеть — градиенты в холодных тонах, тут высота столбика сама по
+    #                   себе не «плохо», и красный сбивал бы с толку.
+    cat <<EOF
+# Catppuccin ${theme_name}. Сгенерировано theme-colors, руками не править.
+
+# Фон и текст
+theme[main_bg]="${C[base]}"
+theme[main_fg]="${C[text]}"
+theme[title]="${C[text]}"
+theme[hi_fg]="${C[blue]}"
+theme[inactive_fg]="${C[overlay0]}"
+
+# Выделенная строка в списке процессов
+theme[selected_bg]="${C[surface1]}"
+theme[selected_fg]="${C[text]}"
+
+# Подписи на графиках, подложка индикаторов, мелочь в боксе процессов
+theme[graph_text]="${C[subtext0]}"
+theme[meter_bg]="${C[surface1]}"
+theme[proc_misc]="${C[rosewater]}"
+
+# Рамки боксов и разделители
+theme[cpu_box]="${C[mauve]}"
+theme[mem_box]="${C[green]}"
+theme[net_box]="${C[maroon]}"
+theme[proc_box]="${C[blue]}"
+theme[div_line]="${C[surface1]}"
+
+# Температуры и загрузка cpu — «выше значит хуже»
+theme[temp_start]="${C[green]}"
+theme[temp_mid]="${C[yellow]}"
+theme[temp_end]="${C[red]}"
+theme[cpu_start]="${C[green]}"
+theme[cpu_mid]="${C[yellow]}"
+theme[cpu_end]="${C[red]}"
+
+# Индикаторы памяти и дисков
+theme[free_start]="${C[teal]}"
+theme[free_mid]=""
+theme[free_end]=""
+theme[cached_start]="${C[sapphire]}"
+theme[cached_mid]=""
+theme[cached_end]=""
+theme[available_start]="${C[sky]}"
+theme[available_mid]=""
+theme[available_end]=""
+theme[used_start]="${C[green]}"
+theme[used_mid]="${C[yellow]}"
+theme[used_end]="${C[red]}"
+
+# Графики сети
+theme[download_start]="${C[teal]}"
+theme[download_mid]="${C[sky]}"
+theme[download_end]="${C[blue]}"
+theme[upload_start]="${C[lavender]}"
+theme[upload_mid]="${C[mauve]}"
+theme[upload_end]="${C[pink]}"
+EOF
+}
+
 # ── Разбор аргументов ─────────────────────────────────────────────────────────
 
 target="${1:-}"
@@ -191,8 +266,9 @@ case "$target" in
     kitty) emit_kitty ;;
     sway)  emit_sway ;;
     css)   emit_css ;;
+    btop)  emit_btop ;;
     *)
-        echo "usage: ${0##*/} kitty|sway|css [dark|light]" >&2
+        echo "usage: ${0##*/} kitty|sway|css|btop [dark|light]" >&2
         exit 2
         ;;
 esac

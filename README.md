@@ -34,7 +34,7 @@ Payload разложен по модулям, чтобы база вставал
 
 | модуль | что внутри | requires |
 |---|---|---|
-| `core` | bash, ble.sh, fzf, starship, tmux, палитра темы (`theme-colors`) | — |
+| `core` | bash, ble.sh, fzf, starship, tmux, btop, палитра темы (`theme-colors`) | — |
 | `kitty` | терминал, шрифты (`fontconfig`), `ssh.conf` для kitten ssh | `kitty` |
 | `sway` | сессия целиком: sway, waybar, wofi, kanshi, тема, мониторы | `sway waybar wofi kanshi wtype` |
 | `devsy` | `~/.ssh/config` + установка CLI и настройка ssh-провайдера | — |
@@ -437,6 +437,8 @@ ble.sh.
   шагам; подключается блоком из `~/.bashrc`, см. «Почему ~/.bashrc не симлинк»
 - **starship** — промпт, конфиг `.config/starship.toml`
 - **tmux** — конфиг `.config/tmux/tmux.conf`, тема и меню-бар. Подробности ниже
+- **btop** — системный монитор, конфиг `.config/btop/btop.conf`: три строки,
+  всё остальное — дефолты btop. Тема — общая палитра сессии, см. «Тема»
 - **шрифты** — цепочка фолбэков собирается в `.config/fontconfig/fonts.conf`:
   - **JetBrainsMono Nerd Font** — дефолтный `monospace`, ставится в
     `~/.local/share/fonts` через `modules/<модуль>/update`
@@ -797,7 +799,7 @@ theme-toggle refresh      # заново применить текущую (зо
 
 Состояние ровно одно — gsettings `org.gnome.desktop.interface color-scheme`.
 Из него портал кормит Chrome, Electron/VSCode и GTK, а `theme-toggle refresh`
-раздаёт цвета тем, кто портала не знает: sway, kitty, waybar, wofi.
+раздаёт цвета тем, кто портала не знает: sway, kitty, waybar, wofi, btop.
 
 Обе палитры (Catppuccin **Mocha** и **Latte**) лежат в одном месте —
 `.local/bin/theme-colors`. Конфиги обращаются к цветам только по именам
@@ -805,7 +807,7 @@ theme-toggle refresh      # заново применить текущую (зо
 в один, а третью можно добавить, не трогая ничего, кроме генератора.
 
 ```sh
-theme-colors kitty|sway|css [dark|light]   # посмотреть, что получит потребитель
+theme-colors kitty|sway|css|btop [dark|light]   # посмотреть, что получит потребитель
 ```
 
 Доставка у каждого своя — по тому, что он умеет:
@@ -828,6 +830,14 @@ theme-colors kitty|sway|css [dark|light]   # посмотреть, что пол
   без базового пути, и на нерезолвнутом импорте теряет весь стиль (рисуется
   дефолтной GTK-темой). Поэтому в git лежит шаблон `style.css.in`, а рабочий
   `style.css` склеивает `refresh` — палитра плюс шаблон. Править надо шаблон.
+- **btop** — тема кладётся файлом `.config/btop/themes/catppuccin.theme` (в git
+  его нет, производное), а `btop.conf` ссылается на него по фиксированному
+  имени: при переключении меняется содержимое файла, а не имя, и сам конфиг
+  трогать не приходится. Разбудить btop нечем — тему он читает только при
+  старте, ни сигнала, ни слежения за файлом у него нет, так что запущенный
+  доживает в старой палитре до перезапуска. Файл пишет не только `refresh`, но
+  и `modules/core/update`: на машине без sway звать `refresh` некому, а без
+  файла btop молча свалился бы в тему `Default`.
 
 Переменной окружения тут не обойтись: env уже запущенного процесса неизменяем, а
 `swaymsg reload` читает тот же замороженный env. Подробный разбор —
