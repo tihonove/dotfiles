@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Индикатор раскладки для waybar (custom/language): us / ru.
+#
+# Резидентный, а не по interval: печатает строку JSON при старте и дальше по
+# одной на каждое событие sway. Опрашивать тут нечего — раскладка меняется
+# редко и сама говорит об этом по IPC.
+#
+# Почему не родной sway/language. Он показывает раскладку ЛЮБОГО устройства,
+# про которое пришло событие, без фильтра (waybar 0.15.0,
+# src/modules/sway/language.cpp, Language::onEvent). А wtype — им синтезирует
+# Ctrl+PageUp/PageDown скрипт content-tab — на каждый запуск создаёт и тут же
+# убивает виртуальную клавиатуру, то есть шлёт по паре событий added/removed с
+# type="keyboard". Раскладок у неё нет вовсе: keymap приходит от клиента, а
+# конфиг `input "type:keyboard" { xkb_layout us,ru }` к виртуальным
+# клавиатурам sway не применяет — проверено, даже адресный
+# `input "0:0:wlr_virtual_keyboard_v1" xkb_layout "us,ru"` отрабатывает с
+# success, но устройство всё равно появляется с пустым списком. В событии
+# приходит xkb_active_layout_name: null, модуль честно показывает пустоту, и
+# индикатор гаснет до следующего Win+Space. То есть каждое переключение вкладки
+# гасило язык в панели.
+#
+# Апстрим это не лечит: в master добавили перечитывание GET_INPUTS по
+# change == "added", но на "removed" лейбл по-прежнему обнуляется.
+#
+# Отбираем устройства по пустому xkb_layout_names, а не по имени
+# wlr_virtual_keyboard_v1: признак говорит ровно то, что нужно — «раскладки
+# этого устройства не знает сам sway, показывать нечего». Любой будущий
+# источник виртуальных клавиатур отсеется тем же условием.
+#
+# Разбор целиком: ~/.system-setup/waybar-language-wtype-virtual-keyboard.md
+
+set -euo pipefail
+
+# Короткое имя раскладки. Полные приходят от sway из xkbregistry («English
+# (US)», «Russian»), и родной модуль в {short} подставлял бы имя xkb-раскладки —
+# «us», «ru». Явная таблица нужна только там, где догадка расходится с этим
+# именем: fallback берёт две первые буквы («Russian» → «ru» и так), а вот
+# «English (US)» превратилось бы в «en».
+JQ_SHORT='{ "English (US)": "us" }'
+
+JQ_PROG='
+def short: '"$JQ_SHORT"'[.] // (ascii_downcase | gsub("[^a-z]"; "") | .[0:2]);
+
+# Настоящая клавиатура: тип keyboard и sway знает её раскладки.
+def real: select(.type == "keyboard" and (.xkb_layout_names | length) > 0);
+
+def render:
+    select(. != null)
+    | .xkb_active_layout_name as $long
+    | ($long | short) as $s
+    | { text: $s, alt: $s, tooltip: $long, class: $s };
+
+# Первым в поток приходит ответ get_inputs (массив), дальше — события подписки
+# (объекты с .input). Из массива берём устройство с самым длинным списком
+# раскладок: так же выбирает родной модуль, и так же это переживает клавиатуру,
+# которой сконфигурировали не весь набор.
+if type == "array"
+then ( [ .[] | real ] | max_by(.xkb_layout_names | length) )
+else ( .input | real )
+end
+| render
+'
+
+# Переподключение: swaymsg живёт до конца сессии sway, но если IPC всё же
+# оборвётся, модуль должен ожить сам, а не остаться пустым до перезапуска
+# панели.
+while :; do
+    {
+        swaymsg -t get_inputs
+        swaymsg -t subscribe -m '["input"]'
+    } | jq --unbuffered -c "$JQ_PROG" || true
+    sleep 1
+done |
+# Событие xkb_layout приходит по одному на КАЖДОЕ устройство (их тут пять:
+# клавиатура, тачпад, две кнопки, гнездо гарнитуры), то есть один Win+Space даёт
+# пять одинаковых строк. Панели незачем пять раз перерисовывать лейбл.
+awk '$0 != prev { print; fflush() } { prev = $0 }'

@@ -56,7 +56,12 @@ button:hover {
 #workspaces button {
     padding: 0 8px;
     background-color: transparent;
-    color: @overlay0;                     /* как unfocused */
+    /* Тот же тон, что у правой группы (см. «Тон модулей»): бар держит один
+       уровень серого от края до края. Раньше тут был @overlay0 «как unfocused
+       у sway», но цифры от этого читались как выключенные. Активный воркспейс
+       и без разницы в яркости отличается тремя способами: фон, синий текст,
+       подчёркивание. */
+    color: @subtext0;
 }
 
 #workspaces button:hover {
@@ -84,12 +89,9 @@ button:hover {
 
 #clock,
 #battery,
-#cpu,
-#memory,
-#temperature,
 #network,
 #pulseaudio,
-#language,
+#custom-language,
 #tray,
 #mode,
 #idle_inhibitor,
@@ -109,21 +111,14 @@ button:hover {
 #battery { padding: 0 4px; }
 #clock   { padding-left: 4px; }
 
-/* Датчики в одной плашке. Внутри блока модули стоят вплотную (3px против
-   обычных 10 плюс обнулённые margin'ы), а padding самой плашки возвращает
-   воздух снаружи — три цифры читаются как один прибор. */
-#system {
+/* Датчики в плашке. Раньше это была group из трёх модулей с обнулёнными
+   отступами внутри; теперь три символа — один текст одного модуля, так что
+   зазор между ними задаёт только шрифт, а плашка возвращает воздух снаружи. */
+#custom-system {
     background-color: @surface0;
     border-radius: 4px;
-    padding: 0 4px;
+    padding: 0 6px;
     margin: 3px 4px;
-}
-
-#system #cpu,
-#system #memory,
-#system #temperature {
-    padding: 0 3px;
-    margin: 0;
 }
 
 #window,
@@ -145,37 +140,80 @@ button:hover {
     margin-right: 0;
 }
 
-/* ── Акценты модулей ───────────────────────────────────────────────────────── */
+/* ── Кликабельное ──────────────────────────────────────────────────────────── */
 
+/* Звук, раскладка и тема реагируют на курсор — по ним кликают и крутят колесо
+   (pulseaudio — громкость, custom/theme — переключение, язык — заодно, чтобы
+   тройка вела себя одинаково). Подсветка — плашка @surface0, та же, что у
+   датчиков и у активного воркспейса, так что бар не обзаводится новым цветом.
+   Эти модули не GtkButton, поэтому общее правило button:hover сюда не достаёт —
+   нужны свои селекторы.
+   margin/border-radius стоят постоянно, а не появляются по :hover: иначе GTK
+   пересчитывает размер виджета и панель дёргается под курсором. */
+#pulseaudio,
+#custom-language,
+#custom-theme {
+    margin: 3px 0;
+    border-radius: 4px;
+    transition: background-color .15s ease-in-out;
+}
+
+#pulseaudio:hover,
+#custom-language:hover,
+#custom-theme:hover {
+    background-color: @surface0;
+    color: @text;
+}
+
+/* ── Тон модулей ───────────────────────────────────────────────────────────── */
+
+/* Правая группа монохромная: раньше у каждого модуля был свой акцент (cpu
+   зелёный, память mauve, температура peach, звук жёлтый, сеть синяя, язык
+   lavender) — восемь цветов подряд читались как радуга, а не как приборы.
+   Тон один на всю группу — @subtext0, тот же, что у номеров воркспейсов слева,
+   так что оба края бара молчат одинаково. Ярче становится только под курсором
+   (см. выше) и там, где цвет несёт смысл: предупреждение и авария.
+
+   Роль именно @subtext0, «второстепенный текст». Сначала тут стоял @overlay0 —
+   тон номеров воркспейсов на тот момент, — и весь ряд читался тусклым: overlay*
+   в палитре предназначены для рамок и выключенных элементов, к фону это меньше
+   3:1. Так что подняли обе стороны бара разом, тон общий остался. Если будешь
+   двигать дальше — двигай парой, иначе края разъедутся. */
+
+#pulseaudio,
+#network,
+#custom-system,
+#custom-language,
+#scratchpad,
+#custom-theme,
+#clock,
+#battery,
+#custom-power            { color: @subtext0; }
+
+/* idle_inhibitor и немой звук — состояния, а не тревоги: отличаются яркостью
+   в пределах той же серой шкалы, а не цветом. Выключенное уходит в @overlay0 —
+   тот самый тон «неактивного», для которого он и предназначен. */
 #idle_inhibitor           { color: @overlay0; }
-#idle_inhibitor.activated { color: @yellow; }
+#idle_inhibitor.activated { color: @text; }
+#pulseaudio.muted         { color: @overlay0; }
 
-#pulseaudio              { color: @yellow; }
-#pulseaudio.muted        { color: @overlay0; }
-
-#network                 { color: @blue; }
 #network.disconnected    { color: @red; }
 
-#cpu                     { color: @green; }
-#memory                  { color: @mauve; }
-#temperature             { color: @peach; }
-#temperature.critical    { color: @red; }
+/* Цвета прямоугольника температуры тут НЕ задаются, хотя место напрашивается.
+   Три символа датчиков — один лейбл, а CSS красит лейбл целиком; покрасить один
+   символ из трёх можно только Pango-разметкой в самом тексте. Поэтому цвет
+   подставляет sys-status, беря его из colors.css по имени роли, — там же лежат
+   и пороги в °C, и сама шкала subtext0 → yellow → peach → red.
+   Класс (.cool/.warm/.hot/.critical) модуль всё равно выставляет: он ничего не
+   красит, но по нему удобно цеплять что-то ещё, если понадобится. */
 
-#language                { color: @lavender; }
-#scratchpad              { color: @subtext0; }
-
-/* Луна на тёмной теме, солнце на светлой — цвет по смыслу иконки */
-#custom-theme.dark       { color: @lavender; }
-#custom-theme.light      { color: @yellow; }
-
-#clock                   { color: @text; }
-#custom-power            { color: @red; }
 #custom-power:hover      { background-color: @red; color: @base; }
 
-#battery                 { color: @green; }
-#battery.charging,
-#battery.plugged         { color: @teal; }
-#battery.warning:not(.charging) { color: @yellow; }
+/* Ниже 30% (state warning из конфига) иконка краснеет, ниже 15% (critical) —
+   ещё и мигает. Жёлтой ступени между ними больше нет: процентов на панели тоже
+   нет, так что предупреждать должен сам цвет, а не оттенок оттенка.
+   :not(.charging) — на зарядке низкий заряд не новость, там иконка с молнией. */
+#battery.warning:not(.charging) { color: @red; }
 
 @keyframes blink {
     to {

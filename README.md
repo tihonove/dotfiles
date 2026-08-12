@@ -36,7 +36,7 @@ Payload разложен по модулям, чтобы база вставал
 |---|---|---|
 | `core` | bash, ble.sh, fzf, starship, tmux, btop, палитра темы (`theme-colors`) | — |
 | `kitty` | терминал, шрифты (`fontconfig`), `ssh.conf` для kitten ssh | `kitty` |
-| `sway` | сессия целиком: sway, waybar, wofi, kanshi, тема, мониторы | `sway waybar wofi kanshi wtype` |
+| `sway` | сессия целиком: sway, waybar, wofi, kanshi, тема, мониторы | `sway waybar wofi kanshi wtype jq` |
 | `devsy` | `~/.ssh/config` + установка CLI и настройка ssh-провайдера | — |
 | `vexx` | только скрипт обновления бинарника | — |
 
@@ -932,6 +932,11 @@ sudo apt install --no-install-recommends kanshi nwg-displays wlr-randr
 # синтез нажатий через virtual-keyboard: им живёт .local/bin/content-tab,
 # третий уровень навигации ($mod+Alt+h/l), см. раздел «tmux».
 sudo apt install --no-install-recommends wtype
+
+# jq: им живёт индикатор раскладки .local/bin/lang-status — фильтрует поток
+# событий `swaymsg -t subscribe` (--unbuffered, строка на событие). Тоже в
+# requires у sway.
+sudo apt install --no-install-recommends jq
 
 # fzf ставит modules/core/update — бинарником в ~/.local/bin, без sudo и
 # свежее пакетного. Пакет тоже годится и, если он уже стоит, установщик его

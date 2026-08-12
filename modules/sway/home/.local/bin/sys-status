@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# Датчики системы для waybar (custom/system): загрузка, память, температура.
+#
+# Три символа в одной строке: два столбика заполнения (CPU, память) и сплошной
+# прямоугольник температуры, который меняет цвет. Символы стоят вплотную, без
+# пробелов, — поэтому это ОДИН модуль, а не три. Родные cpu/memory/temperature
+# каждый рисует свой GtkLabel со своими отступами; вплотную их не свести, между
+# лейблами всё равно остаётся шов, да и щёлкать по три раза пришлось бы.
+#
+# Цифр в панели нет вовсе — все подробности в тултипе, он раскрывается по
+# наведению, как календарь у часов.
+#
+# Цвет температуры приходится задавать Pango-разметкой прямо в тексте: CSS
+# красит лейбл целиком, а покрасить надо один символ из трёх. Чтобы разметка не
+# разошлась со светлой/тёмной темой, значение берётся не из константы, а из
+# ~/.config/waybar/colors.css — того самого файла, который генерит theme-colors
+# и который waybar уже импортирует в style.css. При переключении темы
+# theme-toggle refresh перезаписывает colors.css и будит панель, модуль
+# перечитывает файл и отдаёт цвет новой палитры.
+#
+# Зоны thermal ищутся по имени, а не по номеру: нумерация thermal_zone* зависит
+# от порядка регистрации драйверов и переезжает между ядрами. cluster0-thermal —
+# ближайшее к «температуре пакета» на этом Qualcomm: датчика на пакет тут нет,
+# есть по ядру (cpu0..cpu7) и общий на кластер.
+
+set -euo pipefail
+
+ZONE_TYPE=cluster0-thermal
+
+# Пороги, °C. Холостой ход на этой машине — 39..47, то есть «тепло» начинается
+# почти сразу над ним: шкала настроена показывать не аварию, а работу под
+# нагрузкой. Если жёлтый будет гореть на простое — поднимать надо WARM.
+WARM=45
+HOT=55
+CRIT=65
+
+# Роли палитры под каждую ступень. Имена — те же, что в colors.css и style.css.
+ROLE_COOL=subtext0
+ROLE_WARM=yellow
+ROLE_HOT=peach
+ROLE_CRIT=red
+
+COLORS_CSS="$HOME/.config/waybar/colors.css"
+
+# Восемь ступеней заполнения, U+2581..U+2588. Обычный Unicode, не Nerd Font:
+# глифы видны в редакторе, моноширинны и стыкуются без зазора.
+BARS=(▁ ▂ ▃ ▄ ▅ ▆ ▇ █)
+SOLID=█
+
+# Предыдущий снимок /proc/stat: загрузка CPU — это разница между двумя
+# замерами, одного мгновенного значения там нет. Файл живёт в runtime-каталоге,
+# то есть умирает вместе с сессией.
+STATE="${XDG_RUNTIME_DIR:-/tmp}/waybar-sys-status.prev"
+
+# ── Палитра ───────────────────────────────────────────────────────────────────
+
+role_color() {
+    local role=$1 hex=
+    if [[ -r $COLORS_CSS ]]; then
+        hex=$(awk -v r="$role" '$1=="@define-color" && $2==r {gsub(/;/,"",$3); print $3; exit}' \
+            "$COLORS_CSS")
+    fi
+    # Пока colors.css не сгенерирован (первый запуск до theme-toggle refresh) —
+    # спрашиваем генератор напрямую, чтобы индикатор не остался бесцветным.
+    if [[ -z $hex ]]; then
+        hex=$(theme-colors css 2>/dev/null |
+            awk -v r="$role" '$1=="@define-color" && $2==r {gsub(/;/,"",$3); print $3; exit}')
+    fi
+    printf '%s' "${hex:-#a6adc8}"
+}
+
+# ── Замеры ────────────────────────────────────────────────────────────────────
+
+bar() {  # проценты -> символ заполнения
+    local pct=$1 i
+    (( pct < 0 )) && pct=0
+    (( pct > 100 )) && pct=100
+    i=$(( pct * 8 / 100 ))
+    (( i > 7 )) && i=7
+    printf '%s' "${BARS[$i]}"
+}
+
+read_cpu() {  # -> проценты загрузки с прошлого вызова
+    local cpu user nice sys idle iowait irq softirq steal total idle_all
+    read -r cpu user nice sys idle iowait irq softirq steal _ < /proc/stat
+    total=$(( user + nice + sys + idle + iowait + irq + softirq + steal ))
+    idle_all=$(( idle + iowait ))
+
+    local prev_total=0 prev_idle=0
+    [[ -r $STATE ]] && read -r prev_total prev_idle < "$STATE" || true
+    printf '%s %s\n' "$total" "$idle_all" > "$STATE"
+
+    local dt=$(( total - prev_total )) di=$(( idle_all - prev_idle ))
+    # Первый запуск (снимка ещё нет) и переполнение — считаем нулём, а не делим.
+    (( dt <= 0 )) && { printf '0'; return; }
+    printf '%s' $(( (dt - di) * 100 / dt ))
+}
+
+zone_temp() {  # тип зоны -> °C, пусто если такой нет
+    local want=$1 z
+    for z in /sys/class/thermal/thermal_zone*; do
+        [[ -r "$z/type" && -r "$z/temp" ]] || continue
+        [[ $(<"$z/type") == "$want" ]] || continue
+        printf '%s' $(( $(<"$z/temp") / 1000 ))
+        return
+    done
+}
+
+core_temps() {  # минимальная и максимальная по cpu*-thermal
+    local z t min= max=
+    for z in /sys/class/thermal/thermal_zone*; do
+        [[ -r "$z/type" && -r "$z/temp" ]] || continue
+        [[ $(<"$z/type") == cpu[0-9]*-thermal ]] || continue
+        t=$(( $(<"$z/temp") / 1000 ))
+        [[ -z $min || $t -lt $min ]] && min=$t
+        [[ -z $max || $t -gt $max ]] && max=$t
+    done
+    [[ -n $min ]] && printf '%s %s' "$min" "$max"
+}
+
+cpu_mhz() {  # средняя текущая частота по ядрам
+    local f sum=0 n=0
+    for f in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq; do
+        [[ -r $f ]] || continue
+        sum=$(( sum + $(<"$f") ))
+        n=$(( n + 1 ))
+    done
+    (( n > 0 )) && printf '%s' $(( sum / n / 1000 ))
+}
+
+# ── Сбор ──────────────────────────────────────────────────────────────────────
+
+cpu_pct=$(read_cpu)
+
+declare -A MEM=()
+while read -r key value _; do
+    case "$key" in
+        MemTotal:|MemAvailable:|SwapTotal:|SwapFree:) MEM[${key%:}]=$value ;;
+    esac
+done < /proc/meminfo
+
+mem_total=${MEM[MemTotal]:-0}
+mem_used=$(( mem_total - ${MEM[MemAvailable]:-0} ))
+mem_pct=0
+(( mem_total > 0 )) && mem_pct=$(( mem_used * 100 / mem_total ))
+
+swap_total=${MEM[SwapTotal]:-0}
+swap_used=$(( swap_total - ${MEM[SwapFree]:-0} ))
+
+temp=$(zone_temp "$ZONE_TYPE")
+# Кластерной зоны нет — берём самое горячее ядро, это ближайшая замена.
+if [[ -z $temp ]]; then
+    read -r _ hottest <<<"$(core_temps)"
+    temp=${hottest:-0}
+fi
+
+if   (( temp >= CRIT )); then class=critical; role=$ROLE_CRIT
+elif (( temp >= HOT ));  then class=hot;      role=$ROLE_HOT
+elif (( temp >= WARM )); then class=warm;     role=$ROLE_WARM
+else                          class=cool;     role=$ROLE_COOL
+fi
+
+# ── Вывод ─────────────────────────────────────────────────────────────────────
+
+text="$(bar "$cpu_pct")$(bar "$mem_pct")<span foreground='$(role_color "$role")'>$SOLID</span>"
+
+gib() { awk -v k="$1" 'BEGIN { printf "%.1f", k / 1048576 }'; }
+
+read -r load1 load5 load15 _ < /proc/loadavg
+mhz=$(cpu_mhz)
+read -r core_min core_max <<<"$(core_temps)"
+
+# Тултип — Pango-разметка: <tt> держит колонки, как <tt><small>{calendar}</small></tt>
+# у часов. \n здесь двухсимвольные: строка уезжает внутрь JSON, разворачивает их
+# парсер waybar.
+tip="<b>Процессор</b>\n<tt>загрузка   ${cpu_pct}%"
+[[ -n $mhz ]] && tip+="\nчастота    ${mhz} MHz"
+tip+="\nсредняя    ${load1}  ${load5}  ${load15}</tt>"
+
+tip+="\n\n<b>Память</b>\n<tt>занято     $(gib "$mem_used") / $(gib "$mem_total") GiB  (${mem_pct}%)"
+if (( swap_total > 0 )); then
+    tip+="\nswap       $(gib "$swap_used") / $(gib "$swap_total") GiB"
+fi
+tip+="</tt>"
+
+tip+="\n\n<b>Температура</b>\n<tt>кластер    ${temp}°C"
+[[ -n $core_min ]] && tip+="\nядра       ${core_min}…${core_max}°C"
+tip+="\nпороги     ${WARM} / ${HOT} / ${CRIT}°C</tt>"
+
+printf '{"text":"%s","tooltip":"%s","class":"%s"}\n' "$text" "$tip" "$class"
