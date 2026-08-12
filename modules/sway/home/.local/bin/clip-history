@@ -1,0 +1,250 @@
+#!/usr/bin/env bash
+# История буфера обмена: $mod+v показывает последние копирования и ВСТАВЛЯЕТ
+# выбранное в окно, которое было в фокусе, — а не просто кладёт его в буфер.
+#
+# Три части, каждая объяснена ниже по месту:
+#   daemon  — два wl-paste --watch, которые кормят cliphist (запускает sway)
+#   пикер   — wofi в режиме dmenu, с превью картинок
+#   вставка — wtype, синтез Ctrl+V (как в content-tab)
+#
+# Почему пикер — это wofi, а не отдельная программа. Требование было «пусть
+# выглядит как лаунчер». Совпадение достигается не копированием темы, а тем, что
+# файл стиля буквально один и тот же: wofi по умолчанию берёт
+# ~/.config/wofi/style.css, который theme-toggle refresh собирает из style.css.in
+# и палитры theme-colors. Меняешь тему — меняется и история, сама. Отличия от
+# drun сведены в ~/.config/wofi/clip-history.conf: dmenu вместо drun и включённые
+# картинки.
+#
+# Почему буфер после вставки НЕ восстанавливается в прежнее состояние. Хотелось
+# бы «вставить, не трогая буфер», но в Wayland это невозможно: приложение
+# забирает данные лениво, уже ПОСЛЕ Ctrl+V, и вернуть прежнее содержимое раньше
+# этого момента — значит вставить пустоту. Поэтому выбранное просто остаётся в
+# буфере, ровно как после обычного копирования.
+#
+# Побочный эффект, который так и задуман: наш же вотчер увидит wl-copy и запишет
+# выбранное заново. cliphist при этом схлопнет дубль (-max-dedupe-search), так
+# что запись не размножается, а всплывает наверх — история сама становится MRU.
+#
+# Использование:
+#   clip-history          — открыть пикер (бинд $mod+v)
+#   clip-history daemon   — поднять вотчеры (exec_always в sway/config)
+
+set -euo pipefail
+
+# Рядом с ~/.cache/clip/ от `clip`, но отдельно: там спул файлов для передачи
+# между машинами, тут миниатюры. Общего у них ничего нет, кроме названия.
+readonly CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/clip-history"
+readonly WOFI_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/wofi/clip-history.conf"
+
+# Дефолт cliphist — 750. Скриншоты идут через буфер (Print → satty → Enter), и
+# на 750 записях база пухнет картинками, а список становится нечитаемым.
+readonly MAX_ITEMS=200
+
+# Вдвое больше image_size=48 из clip-history.conf — запас на дробное
+# масштабирование выхода. Больше смысла нет: wofi всё равно ужмёт до 48.
+readonly THUMB=96
+
+# Терминалы вставляют по Ctrl+Shift+V: Ctrl+V в терминале занят (literal-next в
+# readline, блочное выделение в vim), и переучивать его — ломать привычное.
+# Список ведём руками, потому что общей комбинации, как Ctrl+PageUp у вкладок,
+# здесь не существует.
+readonly TERMINALS=" kitty foot Alacritty org.wezfurlong.wezterm com.mitchellh.ghostty "
+
+die() { echo "clip-history: $*" >&2; exit 1; }
+
+### Демон
+
+# pkill живёт здесь, а не в sway-строке (как у waybar и kanshi) сознательно:
+# командная строка `sh -c 'pkill -f "...--watch cliphist"; ...'` СОДЕРЖАЛА БЫ
+# собственный паттерн, и pkill -f убил бы запускающий sh вместе со старыми
+# вотчерами — демон не поднялся бы вообще. У этого скрипта cmdline выглядит как
+# `bash .../clip-history daemon`, совпадения нет ни при каком паттерне.
+#
+# Именно -f, а не -x wl-paste: транзитные wl-paste запускает ещё и `clip`, и
+# сносить их заодно незачем.
+#
+# Паттерн — регулярка по СКЛЕЕННОЙ пробелами командной строке, поэтому между
+# `wl-paste` и `--watch` обязан стоять `.*`: реальный аргумент там
+# `--type text`. Без него совпадений нет вообще, pkill молча ничего не делает, и
+# каждый $mod+Shift+C добавляет ещё пару вотчеров (проверено — их стало четыре).
+daemon() {
+    pkill -f '^wl-paste .*--watch cliphist' || true
+    # Два вотчера, а не один: wl-paste --watch следит за ОДНИМ типом. Без
+    # второго картинки в историю просто не попадали бы.
+    wl-paste --type text  --watch cliphist -max-items "$MAX_ITEMS" store &
+    wl-paste --type image --watch cliphist -max-items "$MAX_ITEMS" store &
+}
+
+### Кто в фокусе
+
+# Спрашиваем ДО показа пикера. wofi — это layer-shell, в дереве окон его нет, так
+# что ответ не изменился бы и после; но так надёжнее и не зависит от того, как
+# sway вернёт фокус.
+#
+# Разбор — питоном, а не jq: рекурсивный обход дерева на python читается, и он
+# уже разбирает JSON в display-setup. jq в дотфайлах тоже есть (lang-status), но
+# там он взят за другое — за потоковый режим над `swaymsg -t subscribe`.
+read -r -d '' PY_FOCUSED <<'PY' || true
+import json, sys
+
+def walk(node):
+    if node.get("focused"):
+        return node
+    for key in ("nodes", "floating_nodes"):
+        for child in node.get(key, []):
+            found = walk(child)
+            if found:
+                return found
+    return None
+
+node = walk(json.load(sys.stdin)) or {}
+# app_id есть у нативных wayland-окон; у XWayland он null, там класс.
+print(node.get("app_id") or node.get("window_properties", {}).get("class") or "")
+PY
+
+focused_app() {
+    swaymsg -t get_tree | python3 -c "$PY_FOCUSED"
+}
+
+### Миниатюры
+
+# Отдавать wofi полноразмерные PNG нельзя: он декодирует их GdkPixbuf'ом на
+# КАЖДОМ запуске, и полсотни скриншотов 1920x1080 превращают мгновенный пикер в
+# многосекундный. Поэтому раскладываем миниатюры в кэш по id записи.
+#
+# Один вызов python3 на всю пачку недостающих: import gi стоит ~150 мс, платить
+# его по разу на картинку глупо. На горячем кэше python не запускается вовсе.
+read -r -d '' PY_THUMBS <<'PY' || true
+import subprocess, sys
+
+import gi
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import GdkPixbuf
+
+size = int(sys.argv[1])
+
+for line in sys.stdin:
+    entry_id, out = line.rstrip("\n").split("\t", 1)
+    try:
+        data = subprocess.run(
+            ["cliphist", "decode", entry_id],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True,
+        ).stdout
+
+        loader = GdkPixbuf.PixbufLoader()
+
+        # Уменьшаем ПРЯМО ПРИ ДЕКОДИРОВании: set_size из size-prepared избавляет
+        # от полноразмерного пиксбуфа в памяти (для 1920x1080 RGBA это 8 МБ).
+        def on_size(ldr, width, height):
+            scale = size / max(width, height)
+            if scale < 1:
+                ldr.set_size(max(1, int(width * scale)), max(1, int(height * scale)))
+
+        loader.connect("size-prepared", on_size)
+        loader.write(data)
+        loader.close()
+        loader.get_pixbuf().savev(out, "png", [], [])
+    except Exception:
+        # Битая или неизвестная картинка — не повод ронять весь пикер: запись
+        # просто покажется без превью.
+        pass
+PY
+
+### Пикер
+
+picker() {
+    command -v cliphist >/dev/null || die "нет cliphist (sudo apt install cliphist)"
+
+    mkdir -p "$CACHE"
+
+    local app
+    app=$(focused_app)
+
+    local -a ids=() mimes=() lines=()
+    local -a pending=()          # id<TAB>путь для тех миниатюр, которых ещё нет
+    local -A alive=()            # id, которые сейчас в истории — для чистки кэша
+
+    local row id preview ext thumb
+    while IFS= read -r row; do
+        id=${row%%$'\t'*}
+        preview=${row#*$'\t'}
+        [[ $id =~ ^[0-9]+$ ]] || continue
+        alive[$id]=1
+
+        # cliphist показывает бинарь как `[[ binary data 10 KiB png 1920x1080 ]]`
+        # — тип прямо в превью, больше его взять неоткуда: сам формат хранения
+        # MIME не запоминает.
+        if [[ $preview =~ ^\[\[\ binary\ data\ .*\ (png|jpe?g|gif|webp|bmp|tiff?)\ [0-9]+x[0-9]+\ \]\]$ ]]; then
+            ext=${BASH_REMATCH[1]}
+            thumb="$CACHE/$id.png"
+            [[ -s $thumb ]] || pending+=("$id"$'\t'"$thumb")
+            # Именно этот MIME потом уедет в wl-copy -t. Это чинит записанное в
+            # README ограничение «тип содержимого при возврате теряется»: для
+            # картинок он больше не теряется.
+            case $ext in
+                jpg|jpeg) mimes+=("image/jpeg") ;;
+                tif|tiff) mimes+=("image/tiff") ;;
+                *)        mimes+=("image/$ext") ;;
+            esac
+            lines+=("img:$thumb:text:$preview")
+        else
+            mimes+=("")
+            # Явный префикс text: и для текста — иначе строка из буфера, начатая
+            # с `img:`, была бы принята wofi за escape-последовательность.
+            lines+=("text:$preview")
+        fi
+        ids+=("$id")
+    # iconv -c выкидывает невалидные последовательности. Нужен из-за cliphist:
+    # превью он режет по БАЙТАМ, разрубая UTF-8 посреди символа. На латинице это
+    # незаметно, а на кириллице ломается почти каждая длинная запись — в GTK
+    # уезжает битая строка. Обрезанный хвостовой символ просто исчезает.
+    done < <(cliphist list | iconv -c -f utf-8 -t utf-8)
+
+    ((${#ids[@]})) || exit 0      # пустая история — молча выйти
+
+    if ((${#pending[@]})); then
+        printf '%s\n' "${pending[@]}" | python3 -c "$PY_THUMBS" "$THUMB" || true
+    fi
+
+    # Кэш чистим по факту: запись выпала из истории — миниатюра больше не нужна.
+    # id у cliphist не переиспользуются, так что устаревшее иначе копилось бы.
+    local f base
+    for f in "$CACHE"/*.png; do
+        [[ -e $f ]] || continue
+        base=${f##*/}
+        [[ -n ${alive[${base%.png}]:-} ]] || rm -f "$f"
+    done
+
+    # dmenu-print_line_num=true в конфиге => на выходе НОМЕР строки с нуля.
+    local idx
+    idx=$(printf '%s\n' "${lines[@]}" | wofi --dmenu --conf "$WOFI_CONF") || exit 0
+    [[ $idx =~ ^[0-9]+$ ]] || exit 0
+
+    id=${ids[idx]}
+    if [[ -n ${mimes[idx]} ]]; then
+        cliphist decode "$id" | wl-copy -t "${mimes[idx]}"
+    else
+        cliphist decode "$id" | wl-copy
+    fi
+
+    # Пикер только что закрылся, и sway ещё возвращает фокус прежнему окну.
+    # Без паузы нажатие уходит в никуда.
+    #
+    # Константа подобрана, а не вычислена, и это честно: дождаться события
+    # нечем. Спросить дерево нельзя — wofi это layer-shell, в дереве окон его
+    # нет, и «в фокусе» там всё это время значится то же самое окно, так что
+    # опрос вернул бы ответ, не дожидаясь ничего.
+    sleep 0.1
+
+    if [[ $TERMINALS == *" $app "* ]]; then
+        exec wtype -M ctrl -M shift -k v -m shift -m ctrl
+    else
+        exec wtype -M ctrl -k v -m ctrl
+    fi
+}
+
+case "${1:-}" in
+    "")       picker ;;
+    daemon)   daemon ;;
+    *) echo "Использование: clip-history [daemon]" >&2; exit 2 ;;
+esac

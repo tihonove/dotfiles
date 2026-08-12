@@ -135,6 +135,12 @@ exec $term
 #   pkill -x kanshi && swaymsg output '*' enable
 # — и удалить эту строку; без неё всё возвращается к штатному поведению sway.
 exec_always sh -c 'pkill -x kanshi; exec kanshi'
+# История буфера обмена: два wl-paste --watch, кормящие cliphist. Здесь только
+# имя — флаги (лимит истории, типы) лежат в скрипте, рядом с пикером, который их
+# и читает. Обёртки `sh -c 'pkill ...'`, как у панели, тут нет намеренно: pkill
+# по паттерну нашёл бы этот самый sh по его же командной строке и убил его
+# вместо старых вотчеров. Внутри скрипта такой ловушки нет — см. clip-history.
+exec_always $HOME/.local/bin/clip-history daemon
 
 ### Клавиши — запуск
 bindsym --to-code $mod+Return   exec $term
@@ -245,7 +251,12 @@ bindsym --to-code Print       exec shot        # выделить область
 bindsym --to-code Shift+Print exec shot -w     # окно в фокусе
 bindsym --to-code $mod+Print  exec shot -f     # весь экран
 
+### История буфера обмена
+# $mod+v показывает последние копирования и ВСТАВЛЯЕТ выбранное в текущее окно.
+# Вся логика в ~/.local/bin/clip-history: пикер — тот же wofi с тем же
+# style.css, что и лаунчер, отличия сведены в ~/.config/wofi/clip-history.conf.
+bindsym --to-code $mod+v exec clip-history
+
 # Не перенесено из старого конфига — нужны пакеты, которых не ставили:
 #   $mod+Tab MRU-переключение — демон ~/.config/sway/mru-switch.py
-#   $mod+v история буфера      — cliphist + wtype + лаунчер
 #   Ctrl+Alt+q блокировка      — swaylock
