@@ -31,20 +31,20 @@ github_nightly_commit() {
         | grep -oP '"name":\s*"Nightly \(\K[^)]+' || true
 }
 
-install_vexx() {
-    echo "vexx..."
+install_diode() {
+    echo "diode..."
 
     local suffix
     suffix=$(platform_asset_suffix) || {
-        echo "❌ Нет сборки vexx под $(uname -m)" >&2
+        echo "❌ Нет сборки diode под $(uname -m)" >&2
         return 1
     }
 
     local latest current
-    latest=$(github_nightly_commit tihonove/vexx)
-    current=$("$BIN_DIR/vexx" --version 2>/dev/null || true)
+    latest=$(github_nightly_commit diode-editor/diode)
+    current=$("$BIN_DIR/diode" --version 2>/dev/null || true)
 
-    # Бинарник ~45 МБ, качать его на каждый запуск незачем.
+    # Бинарник ~50 МБ, качать его на каждый запуск незачем.
     if [[ -n "$latest" && "$current" == "nightly-$latest" ]]; then
         echo "  ✅ уже актуален: $current"
         return 0
@@ -54,15 +54,15 @@ install_vexx() {
     tmp=$(mktemp -d)
     trap "rm -rf '$tmp'" RETURN
 
-    curl -fsSL -o "$tmp/vexx" \
-        "https://github.com/tihonove/vexx/releases/download/nightly/vexx-$suffix"
+    curl -fsSL -o "$tmp/diode" \
+        "https://github.com/diode-editor/diode/releases/download/nightly/diode-$suffix"
 
     mkdir -p "$BIN_DIR"
-    install -m 755 "$tmp/vexx" "$BIN_DIR/vexx"
+    install -m 755 "$tmp/diode" "$BIN_DIR/diode"
 
     # Заодно проверка, что бинарник запускается на этой машине: неверная арка
     # диагностируется только в момент запуска.
-    echo "  ✅ vexx $("$BIN_DIR/vexx" --version)"
+    echo "  ✅ diode $("$BIN_DIR/diode" --version)"
 }
 
-install_vexx
+install_diode

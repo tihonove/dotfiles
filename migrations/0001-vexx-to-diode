@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# 2026-08-15. vexx переехал в diode-editor/diode: сменились имя проекта, имя
+# модуля, имя бинарника и имя куска конфига git. В репе это сделано коммитом,
+# а на машине остались три вещи, до которых коммит не дотягивается:
+#
+#   ~/.config/dotfiles/profile   строка «vexx» — модуля с таким именем больше
+#                                нет, и без правки install.sh пропустит модуль
+#   ~/.local/bin/vexx            прежний бинарник: в PATH, никем не обновляется
+#   ~/.config/git/vexx.conf      симлинк в исчезнувший modules/vexx/...
+#
+# Контракт миграции — см. «Миграции» в install.sh: срабатывает по состоянию,
+# идемпотентна, при DOTFILES_DRY_RUN=1 только рассказывает. Молчит, когда чинить
+# нечего, — то есть на свежей машине и на любом повторном запуске.
+#
+# Умрёт своей смертью, когда все машины пройдут через неё хотя бы дважды
+# (почему дважды — ниже, про бинарник).
+
+set -euo pipefail
+
+# Значения по умолчанию — чтобы миграцию можно было дёрнуть руками, а не только
+# из install.sh.
+PROFILE="${DOTFILES_PROFILE:-${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/profile}"
+HOME_DIR="${DOTFILES_HOME:-$HOME}"
+DOTFILES_DIR="${DOTFILES_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+DRY_RUN="${DOTFILES_DRY_RUN:-0}"
+
+BIN_DIR="$HOME_DIR/.local/bin"
+
+# 1. Профиль: vexx -> diode.
+if [[ -f "$PROFILE" ]] && grep -qxF vexx "$PROFILE"; then
+    if grep -qxF diode "$PROFILE"; then
+        # Обе строки сразу: diode уже включён руками, старую просто убираем.
+        # `|| true` — grep возвращает 1, если не осталось ни строки.
+        new="$(grep -vxF vexx "$PROFILE" || true)"
+        what="строка vexx убрана (diode уже включён)"
+    else
+        new="$(sed 's/^vexx$/diode/' "$PROFILE")"
+        what="vexx -> diode"
+    fi
+
+    if ((DRY_RUN)); then
+        echo "профиль: $what (не тронут, --dry-run)"
+    else
+        printf '%s\n' "$new" > "$PROFILE.tmp.$$"
+        mv "$PROFILE.tmp.$$" "$PROFILE"
+        echo "профиль: $what"
+    fi
+fi
+
+# 2. Прежний бинарник. Убираем ТОЛЬКО когда новый уже на месте: иначе на машине
+#    без сети (или до того, как отработает modules/diode/update) человек
+#    остаётся вообще без редактора, а `git commit` без -m — без core.editor.
+#    Поэтому на машине, где vexx ещё стоит, а diode нет, чистка приходится на
+#    следующий запуск install.sh — новый бинарник к тому моменту уже стоит.
+if [[ -e "$BIN_DIR/vexx" && -x "$BIN_DIR/diode" ]]; then
+    if ((DRY_RUN)); then
+        echo "убрал бы ~/.local/bin/vexx (diode на месте)"
+    else
+        rm -f "$BIN_DIR/vexx"
+        echo "убран ~/.local/bin/vexx"
+    fi
+fi
+
+# 3. Симлинк на исчезнувший файл модуля. Обычно его снимает update.sh (он видит
+#    удалённое по git diff), но `./install.sh` без update.sh — тоже законный
+#    способ обновиться, и после него симлинк остался бы висеть битым.
+#    Снимаем только СВОЙ: цель обязана вести в modules/vexx/ этой репы.
+link="$HOME_DIR/.config/git/vexx.conf"
+if [[ -L "$link" && "$(readlink -- "$link")" == "$DOTFILES_DIR/modules/vexx/"* ]]; then
+    if ((DRY_RUN)); then
+        echo "снял бы битый симлинк ~/.config/git/vexx.conf"
+    else
+        rm -- "$link"
+        echo "снят битый симлинк ~/.config/git/vexx.conf"
+    fi
+fi

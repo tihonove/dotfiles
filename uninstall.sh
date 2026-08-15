@@ -29,7 +29,7 @@
 #   ~/.config/dotfiles/profile
 #                     машинный выбор модулей. Переставить dotfiles и получить
 #                     обратно свой набор — приятно. Убрать вместе со всем: --purge.
-#   ~/.local/bin/*    starship, fzf, devsy, vexx: их ставили modules/*/update,
+#   ~/.local/bin/*    starship, fzf, devsy, diode: их ставили modules/*/update,
 #                     это обычные бинарники, а не раскладка. Показываются в конце
 #                     списком — снимать их или нет, решает человек.
 #
@@ -275,8 +275,11 @@ fi
 
 # Бинарники ставил не install.sh-раскладчик, а modules/*/update. Удалить их
 # автоматически нельзя: тот же ~/.local/bin/fzf мог приехать и не от нас.
+# vexx в списке — прежнее имя diode. Обычно его убирает миграция
+# 0001-vexx-to-diode, но она делает это, только когда diode уже стоит; на машине,
+# которая до неё не дошла, старый бинарник ещё лежит.
 declare -a TOOLS=()
-for t in starship fzf devsy vexx; do
+for t in starship fzf devsy diode vexx; do
     if [[ -x "$HOME/.local/bin/$t" ]]; then TOOLS+=("$t"); fi
 done
 if [[ -d "$HOME/.local/share/blesh" ]]; then TOOLS+=("blesh (~/.local/share/blesh)"); fi

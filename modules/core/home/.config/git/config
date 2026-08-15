@@ -77,12 +77,12 @@
 	process = git-lfs filter-process
 	required = true
 
-# Редактор задаёт модуль vexx, а не этот файл: vexx стоит не везде (в
-# devsy-контейнере его нет), и `core.editor = vexx` там ломал бы `git commit`
+# Редактор задаёт модуль diode, а не этот файл: diode стоит не везде (в
+# devsy-контейнере его нет), и `core.editor = diode` там ломал бы `git commit`
 # без -m. Отсутствующий include git молча игнорирует, так что на машине без
-# модуля vexx строка просто ничего не делает.
+# модуля diode строка просто ничего не делает.
 [include]
-	path = ~/.config/git/vexx.conf
+	path = ~/.config/git/diode.conf
 
 # Чего тут намеренно НЕТ:
 #
