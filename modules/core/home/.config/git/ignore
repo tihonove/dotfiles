@@ -7,3 +7,15 @@
 
 # Claude Code: локальные разрешения, машинно-специфичны и не переносимы.
 **/.claude/settings.local.json
+CLAUDE.local.md
+
+# Работа: пути из рабочих репозиториев. Формально это специфика проекта, но
+# рабочие проекты я завожу в разных средах, а в их .gitignore эти строки не
+# протащить — поэтому держу здесь. Вне работы эти пути не встречаются.
+FRONT_REVIEWER.md
+gbuild
+nci/tsunami/docs/architecture/
+nci/.settings/org.eclipse.buildship.core.prefs
+nci/.settings/org.eclipse.jdt.core.prefs
+nebo-build-and-sync.sh
+nebo-sync.sh
