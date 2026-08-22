@@ -1,0 +1,242 @@
+#!/usr/bin/env bash
+# Уведомления с клавиатуры: $mod+n — открыть последнее, $mod+Shift+n — список.
+#
+# Мышью это уже работало: ЛКМ по плашке = do_action + close_current (см.
+# ~/.config/dunst/dunstrc, раздел «Мышь»), приложение получает ActionInvoked,
+# само показывает нужное место — Slack конкретный тред — и просит у sway
+# активацию окна, а sway переключается, потому что в его конфиге стоит
+# focus_on_window_activation focus. Здесь ровно то же, но без мыши.
+#
+# Почему это не одна строка `exec dunstctl action 0` в биндах. Работает такой
+# вызов ТОЛЬКО пока плашка на экране. Как только уведомление закрылось и уехало
+# в историю, dunst на action по нему не шлёт ничего: клиент к тому моменту забыт
+# (проверено на 1.12.2 — сигнала ActionInvoked не появляется вовсе, ошибки тоже
+# нет, просто тишина). А нажать хочется как раз тогда, когда плашка уже
+# мигнула и пропала.
+#
+# Отсюда две ступени. Сначала честное действие, если есть что нажимать; если
+# нет — грубый запасной путь: найти в дереве sway окно приложения-отправителя и
+# сфокусировать его. Точного места так не получить, только приложение, но это
+# лучше, чем ничего.
+#
+# Что ещё выяснилось про dunstctl action и заложено в код:
+#   • индекс — это позиция среди показанных, 0 = ВЕРХНЯЯ плашка (при sort = yes
+#     это самая старая из висящих). Другие индексы в 1.12.2 просто сломаны:
+#     `dunstctl action 1` отвечает «0 notifications currently open» даже когда
+#     их две. Так что адресовать можно только верхнюю — как и мышью, впрочем.
+#   • `dunstctl close` закрывает ту же самую верхнюю плашку (проверено), так что
+#     пара action + close бьёт по одному уведомлению, а не по разным.
+#   • у уведомления без действий (notify-send без -A, скрипты) action молча не
+#     делает ничего — ни меню, ни ошибки. Поэтому после него мы смотрим, сменился
+#     ли фокус, и если нет — идём тем же запасным путём.
+#
+# Использование:
+#   notify-open        — открыть последнее уведомление (бинд $mod+n)
+#   notify-open list   — выбрать из истории и открыть ($mod+Shift+n)
+
+set -euo pipefail
+
+readonly WOFI_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/wofi/notify-open.conf"
+
+# Сколько ждать реакции приложения на ActionInvoked, прежде чем решить, что оно
+# не отреагировало. Константа подобрана, а не вычислена: события «приложение
+# попросило активацию» со стороны нет — sway сообщает только о смене фокуса,
+# которой в этом случае и не будет. Ошибка в обе стороны не страшна: если
+# приложение отреагирует позже, оно всё равно перетянет фокус на себя, а если мы
+# сфокусируем то же самое окно, куда оно и вело, — это просто холостой swaymsg.
+readonly SETTLE=0.4
+
+die() { echo "notify-open: $*" >&2; exit 1; }
+
+### История в строки
+
+# Разбор — питоном по тем же причинам, что в clip-history: dunstctl history
+# отдаёт JSON (busctl --json=pretty), где каждое поле обёрнуто в {type, data}.
+#
+# Формат строки на выходе: id<TAB>приложение<TAB>что показать в списке.
+# Разделитель именно таб, и он безопасен: весь текст уведомления схлопывается по
+# пробелам, так что своих табов в нём не остаётся.
+read -r -d '' PY_ROWS <<'PY' || true
+import json, re, sys, time
+
+TAG = re.compile(r"<[^>]+>")
+ENT = {"&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&apos;": "'"}
+
+# Тело уведомления — размеченный текст: Chrome шлёт <a href=...>, кто-то <b>.
+# wofi запущен без --allow-markup (разметку не разбирает), так что теги надо
+# снять самим, иначе они уедут в список как есть. Сущности разворачиваем ПОСЛЕ
+# срезки тегов: написанное отправителем &lt;b&gt; — это текст, а не тег.
+def plain(s):
+    s = TAG.sub("", s)
+    for k, v in ENT.items():
+        s = s.replace(k, v)
+    return " ".join(s.split())
+
+def field(n, key):
+    return (n.get(key) or {}).get("data", "")
+
+# timestamp у dunst — CLOCK_MONOTONIC в микросекундах, то есть «столько-то после
+# загрузки»; настенного времени в истории нет вовсе. Переводим через
+# /proc/uptime — сколько секунд назад это было.
+with open("/proc/uptime") as f:
+    uptime = float(f.read().split()[0])
+
+def when(ts):
+    age = uptime - ts / 1e6
+    if age < 60:
+        return "только что"
+    if age < 3600:
+        return "%d мин" % (age // 60)
+    # До полусуток часов достаточно, дальше без даты уже гадание. Границу можно
+    # было бы вести по календарным суткам, но тогда «00:10» и «23:50» соседних
+    # дней выглядят одинаково свежо — а это ровно тот случай, когда путаешься.
+    t = time.localtime(time.time() - age)
+    return time.strftime("%H:%M" if age < 12 * 3600 else "%d.%m %H:%M", t)
+
+data = json.load(sys.stdin).get("data") or [[]]
+# Порядок dunst отдаёт от свежих к старым — и он же нужен и в списке, и тому,
+# кто берёт из этого вывода первую строку как «последнее уведомление».
+for n in data[0]:
+    app = field(n, "appname") or "?"
+    summary = plain(field(n, "summary"))
+    body = plain(field(n, "body"))
+    text = summary + (" — " + body if body else "")
+    if len(text) > 140:
+        text = text[:139] + "…"
+    print("%s\t%s\t%s · %s: %s" % (field(n, "id"), app, when(field(n, "timestamp")), app, text))
+PY
+
+### Окно приложения в дереве sway
+
+# Без аргумента печатает con_id окна в фокусе, с аргументом — con_id окна,
+# похожего на приложение с таким именем.
+#
+# Похожего, а не совпадающего: в уведомлении лежит человеческое имя («Google
+# Chrome»), а у окна — идентификатор («google-chrome»), и общего правила
+# перевода между ними не существует. Сводим оба к буквам и цифрам в нижнем
+# регистре и сравниваем на вхождение в любую сторону: googlechrome == googlechrome,
+# telegramdesktop входит в orgtelegramdesktop. Короткие (меньше трёх символов)
+# отбрасываем — на них такое сравнение начинает попадать во что попало.
+read -r -d '' PY_TREE <<'PY' || true
+import json, re, sys
+
+def norm(s):
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+want = norm(sys.argv[1]) if len(sys.argv) > 1 else ""
+if len(sys.argv) > 1 and len(want) < 3:
+    sys.exit(0)
+
+matches = []
+
+def names(node):
+    props = node.get("window_properties") or {}
+    # app_id — у нативных wayland-окон, class/instance — у XWayland.
+    return (node.get("app_id"), props.get("class"), props.get("instance"))
+
+def walk(node):
+    if want:
+        for name in names(node):
+            n = norm(name)
+            if len(n) >= 3 and (n in want or want in n):
+                matches.append(node)
+                break
+    elif node.get("focused"):
+        matches.append(node)
+    for key in ("nodes", "floating_nodes"):
+        for child in node.get(key, []):
+            walk(child)
+
+walk(json.load(sys.stdin))
+
+# Окон одного приложения может быть несколько (два kitty, три Chrome), и какое
+# из них прислало уведомление, в истории не записано. Приоритет — тому, что само
+# просит внимания: приложение, чью активацию sway отклонил, помечено urgent.
+# Сортировка стабильная, так что при равенстве остаётся порядок обхода дерева.
+matches.sort(key=lambda node: not node.get("urgent"))
+if matches:
+    print(matches[0]["id"])
+PY
+
+focused_id() { swaymsg -t get_tree | python3 -c "$PY_TREE"; }
+
+focus_app() {
+    local id
+    id=$(swaymsg -t get_tree | python3 -c "$PY_TREE" "$1")
+    [[ -n $id ]] || return 1
+    swaymsg "[con_id=$id] focus" >/dev/null
+}
+
+# Открыть запись истории: окно приложения, а если его нет (уведомление от
+# скрипта, приложение уже закрыто) — показать плашку снова. Второе не «вместо
+# фокуса», а единственное осмысленное действие: текст перед глазами, дальше
+# решает человек.
+open_entry() {
+    local id=$1 app=$2
+    focus_app "$app" || dunstctl history-pop "$id" >/dev/null
+}
+
+rows() { dunstctl history | python3 -c "$PY_ROWS"; }
+
+### Последнее уведомление
+
+last() {
+    local before
+
+    if (( $(dunstctl count displayed) > 0 )); then
+        before=$(focused_id)
+        # Ровно то же, что ЛКМ по верхней плашке: сработать действием и убрать её.
+        dunstctl action 0
+        dunstctl close
+        sleep "$SETTLE"
+        [[ $(focused_id) != "$before" ]] && return 0
+        # Фокус не сменился: действия у уведомления не было. Плашка уже закрыта,
+        # то есть уехала в историю первой строкой — дальше по общему пути.
+    fi
+
+    local row
+    row=$(rows | head -1)
+    [[ -n $row ]] || return 0
+
+    local id app
+    IFS=$'\t' read -r id app _ <<<"$row"
+    open_entry "$id" "$app"
+}
+
+### Список
+
+# Только история: висящих на экране здесь нет и быть не может — dunst отдаёт по
+# D-Bus (NotificationListHistory) лишь то, что уже закрылось. Потеря невелика,
+# висящее и так видно, а нажать на него есть чем — тот же $mod+n.
+picker() {
+    local -a ids=() apps=() lines=()
+    local row id app text
+
+    while IFS=$'\t' read -r id app text; do
+        ids+=("$id")
+        apps+=("$app")
+        lines+=("$text")
+    done < <(rows)
+
+    ((${#ids[@]})) || exit 0      # пустая история — молча выйти
+
+    # dmenu-print_line_num=true в конфиге => на выходе НОМЕР строки с нуля.
+    local idx
+    idx=$(printf '%s\n' "${lines[@]}" | wofi --dmenu --conf "$WOFI_CONF") || exit 0
+    [[ $idx =~ ^[0-9]+$ ]] || exit 0
+
+    # Пикер закрывается не мгновенно, а фокус мы вот-вот будем менять сами —
+    # без паузы swaymsg успевает сработать раньше, чем sway вернёт фокус
+    # прежнему окну, и переключение затирается.
+    sleep 0.1
+
+    open_entry "${ids[idx]}" "${apps[idx]}"
+}
+
+command -v dunstctl >/dev/null || die "нет dunstctl (sudo apt install dunst)"
+
+case "${1:-}" in
+    "")     last ;;
+    list)   picker ;;
+    *) echo "Использование: notify-open [list]" >&2; exit 2 ;;
+esac
