@@ -155,6 +155,8 @@ exec_always sh -c 'pkill -x kanshi; exec kanshi'
 exec_always $HOME/.local/bin/clip-history daemon
 
 ### Клавиши — запуск
+# Enter «создаёт» на каждом уровне; какой — говорит модификатор, таблица в
+# разделе «Вкладки внутри окна».
 bindsym --to-code $mod+Return   exec $term
 bindsym --to-code $mod+b        exec $browser
 bindsym --to-code $mod+d        exec $menu
@@ -210,6 +212,11 @@ bindsym --to-code $mod+Shift+9 move container to workspace number 9
 # Переход между столами: предыдущий / следующий
 bindsym --to-code $mod+Ctrl+h workspace prev
 bindsym --to-code $mod+Ctrl+l workspace next
+# Новый пустой стол — верхняя ступень того же «создать по Enter» (таблица в
+# разделе «Вкладки внутри окна»). Своей команды у sway нет: `workspace` ходит по
+# номеру, а next/prev — только по существующим столам, «на первый свободный»
+# выразить нечем. Номер считает скрипт, см. .local/bin/workspace-new.
+bindsym --to-code $mod+Ctrl+Return exec workspace-new
 
 ### Вкладки внутри окна: вкладки Chrome, окна tmux (в том числе по ssh)
 # Третий уровень навигации, самый внутренний: Ctrl — столы, без модификатора —
@@ -218,6 +225,19 @@ bindsym --to-code $mod+Ctrl+l workspace next
 # переключения вкладок — почему так, расписано в самом content-tab.
 bindsym --to-code $mod+Mod1+h exec content-tab prev
 bindsym --to-code $mod+Mod1+l exec content-tab next
+# Новая вкладка на этом же уровне. Enter «создаёт» на всех трёх уровнях, а какой
+# именно — говорит модификатор:
+#
+#              перейти         создать
+#   столы      $mod+Ctrl+h/l   $mod+Ctrl+Enter   (workspace-new, ниже)
+#   окна sway  $mod+h/l        $mod+Enter        (терминал, см. «Клавиши — запуск»)
+#   вкладки    $mod+Alt+h/l    $mod+Alt+Enter
+#
+# Вот здесь content-tab всё же смотрит, кто в фокусе, — ровно одной развилкой
+# «терминал или нет»: универсальный «новый таб» Ctrl+T в шелле занят виджетом
+# fzf по файлам, поэтому в терминал уходит Ctrl+Insert, а его ждёт tmux. Своих
+# вкладок kitty не заводит намеренно; разбор — в content-tab.
+bindsym --to-code $mod+Mod1+Return exec content-tab new
 
 ### Раскладка окон
 # Одна клавиша вместо пары splith/splitv: направление следующего сплита
