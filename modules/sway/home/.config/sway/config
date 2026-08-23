@@ -118,7 +118,12 @@ bindsym $mod+x [urgent=latest] focus
 # Одной цепочкой, а не соседним exec_always: exec'и sway идут ПАРАЛЛЕЛЬНО, и
 # systemctl мог бы обогнать проброс переменных — ровно та гонка, от которой
 # лечимся.
-exec_always sh -c 'dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway XCURSOR_THEME XCURSOR_SIZE; exec systemctl --user start dunst.service'
+# SWAYSOCK в списке не для красоты: swaymsg ищет сокет только в SWAYSOCK/I3SOCK,
+# фолбэка по глобу у него нет, а idle-guard гасит экраны именно через swaymsg.
+#
+# idle-guard — той же цепочкой и по той же причине, что dunst: простой,
+# гашение, блокировка и сон (см. ~/.local/bin/idle-guard).
+exec_always sh -c 'dbus-update-activation-environment --systemd WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP=sway XCURSOR_THEME XCURSOR_SIZE; systemctl --user start dunst.service; exec systemctl --user start idle-guard.service'
 # Светлая/тёмная тема + панель, одной цепочкой.
 #
 # refresh применяет к сессии текущую тему из gsettings: шлёт sway цвета через
@@ -306,6 +311,11 @@ bindsym --to-code $mod+v exec clip-history
 bindsym --to-code $mod+n       exec notify-open
 bindsym --to-code $mod+Shift+n exec notify-open list
 
-# Не перенесено из старого конфига — нужны пакеты, которых не ставили:
+### Блокировка экрана
+# Через loginctl, а не прямым swaylock: тогда LockedHint у logind честный, и все
+# источники блокировки — этот бинд, меню waybar, панель настроек, простой — идут
+# одним путём через событие `lock` у swayidle. Демон поднимает idle-guard.
+bindsym --to-code Ctrl+Alt+q exec loginctl lock-session
+
+# Не перенесено из старого конфига — нужен пакет, которого не ставили:
 #   $mod+Tab MRU-переключение — демон ~/.config/sway/mru-switch.py
-#   Ctrl+Alt+q блокировка      — swaylock

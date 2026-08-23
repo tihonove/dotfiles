@@ -1,0 +1,305 @@
+#!/usr/bin/env bash
+# Простой сессии: приглушить — погасить — заблокировать — усыпить.
+#
+# Зачем обёртка вокруг swayidle. У swayidle один набор таймаутов на весь запуск:
+# ни профилей, ни реакции на кабель он не знает. А времена нужны разные — от
+# сети машина не должна засыпать вовсе, от батареи должна через четверть часа.
+# Единственный способ — перезапускать swayidle с другим argv при смене питания,
+# чем этот скрипт и занимается:
+#
+#   run ──> определить профиль (ac|bat) ──> собрать argv ──> swayidle в фоне
+#            ^                                                    |
+#            └────── питание сменилось / swayidle умер ───────────┘
+#
+# Питание опрашивается раз в POWER_POLL_SEC чтением sysfs, а не подпиской на
+# UPower по D-Bus. Сознательно: одно чтение файла раз в 15 с ничего не стоит,
+# зато ломаться там нечему — ни живость upowerd, ни шина в этот путь не входят.
+# Требование было «не должно сломаться, если питание отключили», и цикл опроса
+# честнее подписки ровно этим.
+#
+# МИНА: зарядка на X13s приходит по USB-C, и /sys/.../qcom-battmgr-ac/online
+# показывает 0 даже при воткнутом блоке. Верный признак — qcom-battmgr-usb
+# (та же логика уже зашита в /usr/lib/systemd/system-sleep/90-poweroff-after-sleep,
+# см. журнал docs/system-setup/idle-lock-suspend-swayidle.md).
+#
+# МИНА: swaymsg умеет найти сокет только через SWAYSOCK/I3SOCK, фолбэка по глобу
+# у него нет. Юнит стартует из цепочки exec_always в ~/.config/sway/config сразу
+# после dbus-update-activation-environment, куда SWAYSOCK и добавлен.
+#
+# Гашение — `output * power off`, а не `enable/disable` и не устаревший `dpms`:
+# power не трогает включённость выходов и поэтому не воюет с kanshi, который
+# держит eDP-1 выключенным, когда воткнут внешний монитор.
+#
+# Блокировка перед сном висит на before-sleep, а не на крышке: так она покрывает
+# любой suspend — от простоя, от крышки, от меню waybar, от systemctl руками.
+# swayidle -w ждёт завершения команды, swaylock -f форкается только когда экран
+# уже закрыт, вместе это и есть гарантия «заблокировано до засыпания». Времени
+# на это ровно InhibitDelayMaxSec из logind.conf — в этой системе 30 с, их ставит
+# дропин unattended-upgrades (свой «10-…» его не перекроет, см. журнал).
+#
+# Использование:
+#   idle-guard run          — главный цикл (его запускает idle-guard.service)
+#   idle-guard status       — профиль, действующие времена, pid swayidle
+#   idle-guard argv [ac|bat] — показать argv, с которым запустится swayidle
+#   idle-guard lock         — заблокировать сейчас (идемпотентно)
+#   idle-guard screen-off|screen-on|dim|undim — отдельные стадии, для отладки
+#
+# Откат, если что-то пошло не так и экран гаснет не вовремя:
+#   systemctl --user stop idle-guard.service && swaymsg 'output * power on'
+#
+# СПАСЕНИЕ ПРИ КРАСНОМ ЭКРАНЕ (сессия заблокирована, а блокировщик умер — sway
+# красит всё красным и ввести пароль некуда). С tty2 (Ctrl+Alt+F2) или по ssh:
+#   idle-guard lock
+# Поднимет новый swaylock поверх осиротевшей блокировки, дальше обычный пароль.
+
+set -euo pipefail
+
+CONFIG_DIR="${IDLE_GUARD_CONFIG_DIR:-$HOME/.config/idle-guard}"
+SELF="$HOME/.local/bin/idle-guard"
+
+# Дефолты на случай, если конфига нет вовсе: не самый удобный, но безопасный
+# набор — экран гаснет и блокируется, от сети не спим.
+AC_DIM_SEC=0
+AC_SCREEN_OFF_SEC=900
+AC_LOCK_SEC=1800
+AC_SUSPEND_SEC=0
+BAT_DIM_SEC=240
+BAT_SCREEN_OFF_SEC=300
+BAT_LOCK_SEC=300
+BAT_SUSPEND_SEC=900
+POWER_POLL_SEC=15
+DIM_LEVEL=10%
+
+# panel.conf подключается из самого config, а не здесь: порядок «рукописное,
+# потом панель» должен быть виден в одном месте — в самом конфиге.
+#
+# МИНА: последняя строка конфига — условный source panel.conf, и когда файла
+# панели нет, она возвращает 1. Под `set -e` это молча убивало бы скрипт, отсюда
+# `|| true`. Чтобы это не проглотило настоящую опечатку, синтаксис проверяется
+# отдельно, до чтения.
+load_config() {
+    [ -r "$CONFIG_DIR/config" ] || return 0
+    if ! bash -n "$CONFIG_DIR/config" 2>/dev/null; then
+        log "ОШИБКА: $CONFIG_DIR/config не разбирается, работаю на встроенных дефолтах"
+        return 0
+    fi
+    # shellcheck source=/dev/null
+    . "$CONFIG_DIR/config" || true
+}
+
+log() { printf '%s\n' "$*" >&2; }
+
+read_or() { # $1 файл, $2 значение по умолчанию
+    if [ -r "$1" ]; then cat "$1" 2>/dev/null || printf '%s' "$2"; else printf '%s' "$2"; fi
+}
+
+# Ровно та же логика, что в хуке 90-poweroff-after-sleep. Расходиться им нельзя:
+# один и тот же вопрос «мы на кабеле?» должен отвечаться одинаково в обоих местах.
+on_external_power() {
+    [ "$(read_or /sys/class/power_supply/qcom-battmgr-usb/online 0)" = 1 ] && return 0
+    [ "$(read_or /sys/class/power_supply/qcom-battmgr-ac/online 0)" = 1 ] && return 0
+    [ "$(read_or /sys/class/power_supply/qcom-battmgr-bat/status Unknown)" = Charging ] && return 0
+    return 1
+}
+
+profile() { if on_external_power; then echo ac; else echo bat; fi; }
+
+# --- стадии -----------------------------------------------------------------
+
+# Достроить переменные сессии, если их нет. Нужно ровно для спасения из tty или
+# по ssh: `idle-guard lock` оттуда обязан работать, иначе при осиротевшей
+# блокировке (красный экран) войти будет нечем.
+#
+# Источник — окружение systemd-юзера: туда их кладёт сам sway строкой
+# dbus-update-activation-environment из своего конфига, то есть это ровно те же
+# значения, с которыми работает юнит.
+#
+# Почему не /proc/$(pgrep sway)/environ: у самого sway этих переменных НЕТ, он
+# создаёт сокет уже после старта и выставляет их только детям. И почему не маска
+# по /run/user: там лежат сокеты прошлых сессий тоже (после перелогина видны и
+# wayland-1, и wayland-2), выбор по маске однажды молча уйдёт к покойнику.
+# Запасной путь — окружение живого потомка sway, если проброс почему-то не
+# случился.
+ensure_wayland_env() {
+    [ -n "${XDG_RUNTIME_DIR:-}" ] || { XDG_RUNTIME_DIR="/run/user/$(id -u)"; export XDG_RUNTIME_DIR; }
+    if [ -n "${WAYLAND_DISPLAY:-}" ] && [ -n "${SWAYSOCK:-}" ]; then return 0; fi
+
+    local from_systemd name value child
+    from_systemd="$(systemctl --user show-environment 2>/dev/null || true)"
+    for name in WAYLAND_DISPLAY SWAYSOCK; do
+        if [ -z "${!name:-}" ]; then
+            value="$(printf '%s\n' "$from_systemd" | sed -n "s/^$name=//p" | head -1)"
+            [ -n "$value" ] && export "$name=$value"
+        fi
+    done
+
+    if [ -z "${WAYLAND_DISPLAY:-}" ] || [ -z "${SWAYSOCK:-}" ]; then
+        child="$(pgrep -x swaybg | head -1 || true)"
+        [ -n "$child" ] || child="$(pgrep -x waybar | head -1 || true)"
+        for name in WAYLAND_DISPLAY SWAYSOCK; do
+            if [ -z "${!name:-}" ] && [ -n "$child" ]; then
+                value="$(tr '\0' '\n' < "/proc/$child/environ" 2>/dev/null | sed -n "s/^$name=//p" | head -1)"
+                [ -n "$value" ] && export "$name=$value"
+            fi
+        done
+    fi
+    # Явный ноль: последним в функции стоит [ -n ... ], и его провал под set -e
+    # уронил бы вызывающего.
+    return 0
+}
+
+do_lock() {
+    pgrep -x swaylock >/dev/null && return 0
+    ensure_wayland_env
+    # МИНА-2, дороже первой: swaylock ОБЯЗАН жить вне cgroup сервиса. Запущенный
+    # напрямую, он оказывается потомком swayidle, то есть внутри
+    # idle-guard.service — и любой `systemctl --user restart idle-guard` убивает
+    # его вместе с демоном. Сессия при этом остаётся заблокированной по
+    # ext-session-lock без единого клиента: sway красит весь экран КРАСНЫМ и
+    # войти нечем (проверено, потеряли сессию). Транзиентный scope выносит
+    # блокировщик из-под юнита, и рестарт демона ему больше не страшен.
+    if systemd-run --user --scope --quiet --collect -- swaylock -f; then return 0; fi
+    log "systemd-run не сработал, поднимаю swaylock напрямую — переживёт не всё"
+    if swaylock -f; then return 0; fi
+    log "ОШИБКА: swaylock не поднялся — ЭКРАН НЕ ЗАБЛОКИРОВАН (проверь ~/.config/swaylock/config)"
+    notify-send -u critical "Блокировка не сработала" \
+        "swaylock не запустился. journalctl --user -u idle-guard.service" 2>/dev/null || true
+    return 1
+}
+
+do_unlock() { pkill -x -USR1 swaylock || true; }
+
+do_screen_off() { ensure_wayland_env; swaymsg 'output * power off' >/dev/null; }
+do_screen_on()  { ensure_wayland_env; swaymsg 'output * power on'  >/dev/null; }
+
+do_dim() { brightnessctl -s set "$DIM_LEVEL" >/dev/null; }
+do_undim() { brightnessctl -r >/dev/null 2>&1 || true; }
+
+# --- сборка argv для swayidle ------------------------------------------------
+
+declare -A STAGE_ACTION STAGE_RESUME
+STAGE_TIMES=""
+
+# Стадии с ОДИНАКОВЫМ таймаутом склеиваются в одну команду. Два блока `timeout`
+# с равным значением swayidle принимает, но порядок их срабатывания не определён,
+# а «заблокировать» и «погасить» на одной секунде обязаны идти именно в этом
+# порядке — иначе между ними мелькает незаблокированный стол.
+add_stage() { # $1 таймаут, $2 команда, $3 команда на возврат (может быть пустой)
+    local t="$1" act="$2" res="${3:-}"
+    [ "$t" -gt 0 ] 2>/dev/null || return 0
+    if [ -n "${STAGE_ACTION[$t]:-}" ]; then
+        STAGE_ACTION[$t]="${STAGE_ACTION[$t]}; $act"
+    else
+        STAGE_ACTION[$t]="$act"
+    fi
+    [ -n "$res" ] || return 0
+    if [ -n "${STAGE_RESUME[$t]:-}" ]; then
+        STAGE_RESUME[$t]="${STAGE_RESUME[$t]}; $res"
+    else
+        STAGE_RESUME[$t]="$res"
+    fi
+}
+
+# Заполняет STAGE_* для профиля $1 и STAGE_TIMES — человекочитаемую сводку.
+# Вызывать ТОЛЬКО напрямую: в $( ) подстановке правки массивов остались бы
+# в субшелле, а argv собрался бы пустым.
+collect_stages() {
+    local p="$1" dim off lock susp
+    if [ "$p" = ac ]; then
+        dim=$AC_DIM_SEC; off=$AC_SCREEN_OFF_SEC; lock=$AC_LOCK_SEC; susp=$AC_SUSPEND_SEC
+    else
+        dim=$BAT_DIM_SEC; off=$BAT_SCREEN_OFF_SEC; lock=$BAT_LOCK_SEC; susp=$BAT_SUSPEND_SEC
+    fi
+    STAGE_ACTION=(); STAGE_RESUME=()
+    # Порядок добавления = порядок внутри склеенной команды.
+    add_stage "$lock" "$SELF lock"
+    add_stage "$dim"  "$SELF dim"        "$SELF undim"
+    add_stage "$off"  "$SELF screen-off" "$SELF screen-on"
+    add_stage "$susp" "systemctl suspend"
+    STAGE_TIMES="dim=$dim screen-off=$off lock=$lock suspend=$susp"
+}
+
+build_argv() { # заполняет глобальный массив SWAYIDLE_ARGV
+    SWAYIDLE_ARGV=(swayidle -w)
+    local t
+    for t in $(printf '%s\n' "${!STAGE_ACTION[@]}" | sort -n); do
+        SWAYIDLE_ARGV+=(timeout "$t" "${STAGE_ACTION[$t]}")
+        [ -n "${STAGE_RESUME[$t]:-}" ] && SWAYIDLE_ARGV+=(resume "${STAGE_RESUME[$t]}")
+    done
+    SWAYIDLE_ARGV+=(
+        before-sleep "$SELF lock"
+        after-resume "$SELF screen-on"
+        lock         "$SELF lock"
+        unlock       "$SELF unlock"
+    )
+}
+
+# --- главный цикл ------------------------------------------------------------
+
+IDLE_PID=""
+
+stop_swayidle() {
+    [ -n "$IDLE_PID" ] || return 0
+    # SIGTERM, а не KILL: swayidle на нём доигрывает отложенные resume-команды,
+    # то есть сам зажигает экран, если гасил его. С KILL остался бы чёрный экран.
+    kill "$IDLE_PID" 2>/dev/null || true
+    wait "$IDLE_PID" 2>/dev/null || true
+    IDLE_PID=""
+}
+
+cmd_run() {
+    trap 'stop_swayidle; exit 0' TERM INT
+    local current="" p
+    while :; do
+        load_config
+        p="$(profile)"
+        if [ "$p" != "$current" ] || [ -z "$IDLE_PID" ] || ! kill -0 "$IDLE_PID" 2>/dev/null; then
+            stop_swayidle
+            collect_stages "$p"
+            build_argv
+            "${SWAYIDLE_ARGV[@]}" &
+            IDLE_PID=$!
+            log "профиль: $p ($STAGE_TIMES), swayidle pid $IDLE_PID"
+            current="$p"
+        fi
+        # sleep фоном + wait: иначе bash доигрывает trap только после возврата
+        # из sleep, и systemctl stop ждал бы до конца интервала.
+        sleep "$POWER_POLL_SEC" &
+        wait $! || true
+    done
+}
+
+cmd_argv() { # $1 — профиль, по умолчанию текущий
+    load_config
+    collect_stages "${1:-$(profile)}"
+    build_argv
+    printf '%s\n' "${SWAYIDLE_ARGV[@]}"
+}
+
+cmd_status() {
+    load_config
+    local p
+    p="$(profile)"
+    collect_stages "$p"
+    echo "профиль:  $p"
+    echo "времена:  $STAGE_TIMES"
+    echo "swayidle: $(pgrep -x swayidle | tr '\n' ' ' || echo '—')"
+    echo "swaylock: $(pgrep -x swaylock >/dev/null && echo 'экран заблокирован' || echo 'нет')"
+    echo "конфиг:   $CONFIG_DIR/config$([ -r "$CONFIG_DIR/panel.conf" ] && echo ' + panel.conf')"
+}
+
+case "${1:-}" in
+    run)        cmd_run ;;
+    status)     cmd_status ;;
+    argv)       cmd_argv "${2:-}" ;;
+    lock)       do_lock ;;
+    unlock)     do_unlock ;;
+    screen-off) do_screen_off ;;
+    screen-on)  do_screen_on ;;
+    dim)        load_config; do_dim ;;
+    undim)      do_undim ;;
+    *)
+        echo "использование: idle-guard {run|status|argv|lock|unlock|screen-off|screen-on|dim|undim}" >&2
+        exit 2
+        ;;
+esac

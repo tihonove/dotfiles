@@ -1,0 +1,45 @@
+# Экран блокировки. Палитра Catppuccin Mocha — та же, что в client.* конфига sway.
+#
+# Статично тёмный, светлой версии нет: theme-toggle перекрашивает живую сессию
+# (swaymsg, colors.css, сигнал kitty), а swaylock перечитать конфиг нечем — он
+# читает файл один раз при запуске. Городить перезапуск замка ради темы смысла
+# нет: замок и должен быть тёмным.
+
+ignore-empty-password
+show-failed-attempts
+
+color=1e1e2e
+# indicator-idle-visible, а не голый `indicator`: короткого имени в swaylock 1.8
+# нет, а getopt_long дотягивает префикс до нескольких длинных опций и падает с
+# «option '--indicator' is ambiguous» — весь конфиг тогда не читается, и замок
+# молча не поднимается (проверено, потеряли на этом полчаса).
+indicator-idle-visible
+indicator-radius=90
+indicator-thickness=8
+indicator-caps-lock
+
+inside-color=1e1e2e
+inside-clear-color=1e1e2e
+inside-ver-color=1e1e2e
+inside-wrong-color=1e1e2e
+
+ring-color=45475a
+ring-clear-color=f9e2af
+ring-ver-color=89b4fa
+ring-wrong-color=f38ba8
+
+key-hl-color=a6e3a1
+bs-hl-color=f38ba8
+caps-lock-key-hl-color=fab387
+caps-lock-bs-hl-color=f38ba8
+
+line-color=1e1e2e
+line-clear-color=1e1e2e
+line-ver-color=1e1e2e
+line-wrong-color=1e1e2e
+separator-color=1e1e2e
+
+text-color=cdd6f4
+text-clear-color=cdd6f4
+text-ver-color=cdd6f4
+text-wrong-color=cdd6f4
