@@ -84,6 +84,14 @@ client.background       #1e1e2e
 # в тайлинг рабочего стола: заглянуть в наушники и закрыть.
 # Блочная форма for_window в sway не поддерживается — команды через запятую.
 for_window [app_id="bluetuith"] floating enable, resize set 900 600, move position center
+# Панель настроек x13s. Тот же приём, что у bluetuith: запись
+# x13s-settings.desktop поднимает её в kitty с app_id=x13s-settings, отсюда
+# критерий. Плавающей, а не в тайлинге: панель открывают поверх работы, крутят
+# ручку и закрывают, раздвигать под неё рабочий стол незачем.
+#
+# 1000x700 — не на глаз: сайдбар 22 колонки плюс самый широкий экран («Питание»,
+# подпись 24 + слайдер + пометка) и ~20 строк содержимого со статус-баром.
+for_window [app_id="x13s-settings"] floating enable, resize set 1000 700, move position center
 # satty подгоняет окно под размер снимка — в тайлинге от этого нет толку.
 for_window [app_id="com.gabm.satty"] floating enable, move position center
 
