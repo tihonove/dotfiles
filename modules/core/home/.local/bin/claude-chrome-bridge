@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Пробрасывает сокет моста Claude in Chrome с ЭТОЙ машины (где запущен Chrome
+# с расширением) на удалённую, где работает claude. Официально такой сценарий
+# не поддерживается, но мост — обычный юникс-сокет, и ssh -R его честно тянет.
+# Вся схема разобрана в ~/.system-setup/claude-chrome-remote-bridge.md на
+# принимающей стороне (tihonove-ivm).
+#
+# Использование:
+#   claude-chrome-bridge [хост]     хост по умолчанию — tihonove-ivm
+#
+# Держит туннель на переднем плане; после перезапуска Chrome перезапустить и
+# его: нативный хост расширения создаёт новый сокет с новым PID в имени, а
+# какой сокет тянуть, мы решаем один раз, на старте.
+#
+# Неочевидности, зашитые в команды ниже:
+# - удалённое имя сокета обязано быть НЕчисловым: файлы вида <pid>.sock
+#   хост-сторона claude чистит, если процесса с таким PID нет на её машине;
+# - каталог на той стороне должен существовать ДО установления сессии — сокет
+#   создаёт принимающий ssh-сервер в момент bind, remote-команда опоздает;
+# - sudo chown на той стороне: туннель терминируется в tailscaled (Tailscale
+#   SSH), тот работает под root и создаёт сокет root:root 0600 — claude под
+#   пользователем к такому не подключится.
+
+set -euo pipefail
+
+host=${1:-tihonove-ivm}
+dir="/tmp/claude-mcp-browser-bridge-$USER"
+
+sock=$(ls -t "$dir"/*.sock 2>/dev/null | head -1 || true)
+if [[ -z $sock ]]; then
+    echo "claude-chrome-bridge: в $dir нет ни одного сокета." >&2
+    echo "Chrome с расширением Claude in Chrome запущен? Расширение подключено к аккаунту?" >&2
+    exit 1
+fi
+
+remote_user=$(ssh "$host" 'mkdir -p -m 700 "/tmp/claude-mcp-browser-bridge-$USER" && whoami')
+remote_sock="/tmp/claude-mcp-browser-bridge-$remote_user/local-chrome.sock"
+
+echo "claude-chrome-bridge: $sock -> $host:$remote_sock"
+exec ssh -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes \
+    -R "$remote_sock:$sock" "$host" \
+    'sudo chown "$(whoami)": '"$remote_sock"' && echo "bridge up ($(date +%H:%M:%S)); на той стороне: CLAUDE_CODE_ENABLE_CFC=true claude, затем /chrome"; exec sleep infinity'
