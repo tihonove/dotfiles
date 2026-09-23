@@ -50,7 +50,7 @@
     //   power-profiles-daemon — сервиса нет, модуль просто висел бы пустым
     //   custom/media          — тянет playerctl и ~/.config/waybar/mediaplayer.py
     //   battery#bat2          — батарея одна (qcom-battmgr-bat)
-    //   keyboard-state        — CapsLock перемаплен в Ctrl, показывать нечего
+    //   keyboard-state        — Caps переключает раскладку (настоящий Caps — Shift+Caps), показывать нечего
     //   backlight             — панель и так широкая, яркость крутится клавишами
 
     "sway/mode": {

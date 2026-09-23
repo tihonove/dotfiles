@@ -27,10 +27,13 @@ set $down j
 set $up k
 set $right l
 
-### Раскладка клавиатуры: US + Russian, переключение Win+Space
+### Раскладка клавиатуры: US + Russian, переключение Caps Lock (и Win+Space)
+# Настоящий Caps Lock — Shift+Caps (так устроен grp:caps_toggle).
+# Раньше Caps на уровне ядра был Ctrl (/etc/udev/hwdb.d/91-capslock-as-ctrl.hwdb);
+# файл переименован в .disabled, иначе sway клавишу не увидит.
 input "type:keyboard" {
     xkb_layout us,ru
-    xkb_options grp:win_space_toggle
+    xkb_options grp:caps_toggle,grp:win_space_toggle
 }
 
 ### Тачпад: тап-клик и естественная прокрутка
