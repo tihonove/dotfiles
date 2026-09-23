@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Переключение по окнам текущего стола — $mod+Tab / $mod+Shift+Tab,
+# см. sway/config, раздел «Фокус». Средняя ступень навигации:
+#
+#              перейти         создать
+#   столы      $mod+Ctrl+h/l   $mod+Ctrl+Enter   (.local/bin/workspace-new)
+#   окна sway  $mod+Tab        $mod+Enter        (этот скрипт)
+#   вкладки    $mod+Alt+h/l    $mod+Alt+Enter    (.local/bin/content-tab)
+#
+# Почему скриптом, а не штатным `focus next`. Родная команда ходит по соседям
+# ВНУТРИ текущего уровня дерева, а не по окнам стола: «Moves focus to the
+# previous or next container in the current layout» (sway(5)). На вложенных
+# сплитах это запирает фокус в поддереве. Проверено на столе вида
+#
+#   workspace[splitv]
+#     con[splith]        <- вложенный контейнер
+#       con A
+#       con B
+#     con C
+#     con D
+#
+# `focus next` из B даёт A, B, A, B, ... — до C и D не добраться вообще, и
+# `focus next sibling` ведёт себя точно так же. Поэтому список окон стола
+# собираем сами обходом дерева и фокусим по con_id.
+#
+# Порядок — обход дерева в глубину, то есть порядок раскладки на экране, а не
+# история переходов: MRU тут сознательно нет, он потребовал бы демона с
+# состоянием. Список плоский, вложенность на порядок не влияет, обход
+# заворачивается по кругу.
+
+set -euo pipefail
+
+case "${1-}" in
+    next) step=1 ;;
+    prev) step=-1 ;;
+    *) echo "usage: ${0##*/} next|prev" >&2; exit 2 ;;
+esac
+
+# Окна берём только с текущего стола: сначала его имя, потом его узел в дереве.
+# (`recurse` по всему дереву без этого собрал бы и другие столы, и scratchpad.)
+ws=$(swaymsg -t get_workspaces | jq -r 'first(.[] | select(.focused) | .name)')
+
+# Листья поддерева стола — это и есть окна: у контейнеров-сплитов дети есть,
+# у окна нет. floating_nodes тоже считаем — плавающее окно с точки зрения
+# «переключиться на окно стола» ничем не отличается от обычного.
+target=$(swaymsg -t get_tree | jq --arg ws "$ws" --argjson step "$step" '
+    [ recurse(.nodes[]?, .floating_nodes[]?)
+      | select(.type == "workspace" and .name == $ws) ]
+    | first
+    | [ recurse(.nodes[]?, .floating_nodes[]?)
+        | select((.nodes | length) == 0 and (.floating_nodes | length) == 0)
+        | select(.type == "con" or .type == "floating_con") ] as $wins
+    | ($wins | map(.focused) | index(true)) as $i
+    # Идти некуда, если окон меньше двух или фокус стоит на самом столе
+    # (так бывает ровно на пустом столе — тогда $i будет null).
+    | if ($wins | length) < 2 or $i == null then empty
+      else $wins[($i + $step) % ($wins | length)].id
+      end')
+
+# empty из jq -> пустая строка: молча выходим, нажатие просто ничего не делает.
+[ -n "$target" ] || exit 0
+
+exec swaymsg "[con_id=$target] focus" >/dev/null

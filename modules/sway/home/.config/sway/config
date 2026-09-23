@@ -196,6 +196,14 @@ bindsym --to-code $mod+Down   focus down
 bindsym --to-code $mod+Up     focus up
 bindsym --to-code $mod+Right  focus right
 
+# По окнам стола одной рукой, по кругу. Порядок — раскладка на экране, а не
+# история переходов: MRU потребовал бы демона с состоянием, и сознательно не
+# делается. Почему не штатный `focus next`: он ходит по соседям внутри текущего
+# уровня дерева и на вложенных сплитах запирает фокус в поддереве — разбор и
+# проверка в самом ~/.local/bin/window-cycle.
+bindsym --to-code $mod+Tab       exec window-cycle next
+bindsym --to-code $mod+Shift+Tab exec window-cycle prev
+
 ### Перемещение окна
 bindsym --to-code $mod+Shift+$left  move left
 bindsym --to-code $mod+Shift+$down  move down
@@ -329,4 +337,6 @@ bindsym --to-code $mod+Shift+n exec notify-open list
 bindsym --to-code Ctrl+Alt+q exec loginctl lock-session
 
 # Не перенесено из старого конфига — нужен пакет, которого не ставили:
-#   $mod+Tab MRU-переключение — демон ~/.config/sway/mru-switch.py
+#   MRU-переключение окон — демон, помнящий историю фокуса. $mod+Tab ходит
+#   по окнам в порядке раскладки (window-cycle, раздел «Фокус»); MRU к нему
+#   сознательно не прикручен — это состояние и демон ради одной клавиши.
