@@ -1,0 +1,86 @@
+#!/bin/bash
+
+# Машинное состояние модуля sway — то, что симлинком не разложишь.
+#
+# Пока пункт один: браузер по умолчанию. ~/.config/mimeapps.list в репу не
+# положить — в него пишут сами программы (Chrome, Telegram, xdg-settings), и
+# симлинк в репу означал бы вечно грязный git status. Поэтому файл остаётся
+# машинным, а нужную запись в нём держит этот скрипт.
+
+set -euo pipefail
+
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/tools.sh"
+
+# browser-here — обёртка над Chrome (см. ~/.local/bin/browser-here), поэтому
+# место она занимает только у Chrome. Стоит по умолчанию другой браузер — это
+# чьё-то решение, и молча его отменять незачем.
+#
+# .desktop пишется отсюда, а не лежит в репе симлинком, из-за Exec: в нём нужен
+# АБСОЛЮТНЫЙ путь, а он у каждой машины свой. Голое `browser-here` не годится —
+# у сервисов systemd --user (xdg-desktop-portal) ~/.local/bin в PATH нет. Ни ~,
+# ни $HOME Exec не раскрывает, а обход через `sh -c '… "$HOME/…"'` понимает gio,
+# но не xdg-open: тот режет Exec по пробелам, не глядя на кавычки (проверено —
+# «Unterminated quoted string», и ссылка молча не открывается).
+#
+# Обратного хода нет намеренно. Снимут модуль — пропадёт browser-here, и запись
+# отключится сама: по TryExec её отбрасывает GLib, по отсутствию команды —
+# xdg-open, и оба идут к следующему, кто заявил http/https, то есть к Chrome.
+register_browser_here() {
+    echo "Браузер по умолчанию..."
+
+    local ours=browser-here.desktop
+    local apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+    local bin="$BIN_DIR/browser-here"
+
+    if ! have xdg-settings; then
+        echo "  xdg-settings нет (пакет xdg-utils) — пропускаю"
+        return 0
+    fi
+    if ! have google-chrome-stable; then
+        echo "  Chrome не установлен — оборачивать нечего, пропускаю"
+        return 0
+    fi
+    if [[ ! -x "$bin" ]]; then
+        echo "❌ нет $bin — раскладка модуля не прошла?" >&2
+        return 1
+    fi
+
+    # Пишем, только если содержимое разошлось: скрипт гоняется на каждой
+    # установке, и трогать файл без причины незачем.
+    local entry
+    entry=$(cat <<EOF
+[Desktop Entry]
+Type=Application
+Name=Chrome на текущем столе
+Comment=Ссылка — вкладкой в Chrome текущего стола sway, а нет его тут — новым окном
+TryExec=$bin
+Exec=$bin %U
+NoDisplay=true
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
+EOF
+)
+    if [[ ! -f "$apps/$ours" || "$(cat "$apps/$ours")" != "$entry" ]]; then
+        mkdir -p "$apps"
+        printf '%s\n' "$entry" > "$apps/$ours"
+        echo "  записан $apps/$ours"
+    fi
+
+    local current
+    current=$(xdg-settings get default-web-browser 2>/dev/null || true)
+
+    case "$current" in
+        "$ours")
+            echo "  ✅ уже $ours"
+            ;;
+        google-chrome.desktop|"")
+            xdg-settings set default-web-browser "$ours"
+            echo "  ✅ ${current:-не задан} -> $ours"
+            ;;
+        *)
+            echo "  ⚠  по умолчанию стоит $current, не Chrome — не трогаю."
+            echo "     Если нужно: xdg-settings set default-web-browser $ours"
+            ;;
+    esac
+}
+
+register_browser_here

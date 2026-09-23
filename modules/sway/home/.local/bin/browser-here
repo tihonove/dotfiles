@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Открыть ссылку в Chrome НА ТЕКУЩЕМ столе: есть тут окно Chrome — вкладкой в
+# нём, нет — новым окном. Стоит браузером по умолчанию (browser-here.desktop,
+# регистрирует modules/sway/update), так что сюда приходят ссылки из kitty,
+# Telegram, VS Code и всего, что зовёт xdg-open.
+#
+# Зачем. `google-chrome URL` отдаёт ссылку уже работающему процессу, а тот
+# открывает вкладку в окне, которое было активным ПОСЛЕДНИМ, — на каком бы столе
+# оно ни стояло. Следом окно просит активацию, у нас focus_on_window_activation
+# focus (нужен уведомлениям, см. notify-open) — и sway уносит на чужой стол.
+# Про столы Chrome не знает, и настройки «открывать тут» нет ни у него, ни у
+# sway.
+#
+# Как. Указать Chrome окно снаружи нечем: CLI для этого нет, а
+# --remote-debugging-port с Chrome 136 на основном профиле выключен. Зато
+# «последнее активное» — состояние, которым можно управлять: фокусируем нужное
+# окно, и оно им становится. Лишнего движения тут нет — фокус на Chrome после
+# открытия ссылки уехал бы в любом случае.
+#
+# Гонка между фокусом и открытием есть только в теории. sway шлёт окну
+# configure с activated сразу на `focus`, и Chrome видит его раньше, чем
+# запрос с URL: тому ещё надо дождаться старта процесса google-chrome
+# (десятки миллисекунд) и пройти через сокет синглтона. Пауза не нужна —
+# проверено серией открытий без неё.
+#
+# Чего скрипт НЕ ловит: ссылки из PWA (Slack). Это окна самого Chrome, клик в
+# них через xdg-open не идёт вовсе — Chrome сам решает, куда открыть.
+
+set -euo pipefail
+
+# Тот же запуск, что $browser в sway/config: если Chrome ещё не запущен, первым
+# его процессом станет этот.
+chrome=(google-chrome-stable --ozone-platform-hint=auto --no-default-browser-check)
+
+# Не под sway (ssh, другая сессия) — обычное поведение Chrome, без затей.
+tree=$(swaymsg -t get_tree 2>/dev/null) || exec "${chrome[@]}" "$@"
+
+# Окно Chrome на текущем столе: id и в фокусе ли оно уже.
+#
+# Текущий стол — тот, в чьём поддереве сфокусированный узел (на пустом столе в
+# фокусе сам стол, recurse начинается с него же, так что условие общее).
+#
+# Окон Chrome на столе может быть несколько — берём то, где были последним.
+# Поле focus у контейнера — id детей в порядке давности фокуса; спуск по нему
+# в глубину и даёт окна от свежих к старым.
+#
+# app_id ровно google-chrome: у PWA он свой (chrome-<id>-Default), и вкладок
+# у них нет. class — на случай Chrome под Xwayland.
+read -r target focused < <(jq -r '
+    def mru:
+        . as $n
+        | if (.nodes + .floating_nodes | length) == 0 then .
+          else .focus[] as $id
+               | ($n.nodes + $n.floating_nodes)[] | select(.id == $id) | mru
+          end;
+    first(recurse(.nodes[]?, .floating_nodes[]?)
+          | select(.type == "workspace")
+          | select(any(recurse(.nodes[]?, .floating_nodes[]?); .focused)))
+    | first(mru | select(.app_id == "google-chrome"
+                         or .window_properties.class == "Google-chrome"))
+    | "\(.id) \(.focused)"' <<<"$tree") || true
+
+if [[ -z ${target:-} ]]; then
+    # Новое окно sway сам поставит на текущий стол.
+    exec "${chrome[@]}" --new-window "$@"
+fi
+
+[[ $focused == true ]] || swaymsg "[con_id=$target] focus" >/dev/null
+exec "${chrome[@]}" "$@"

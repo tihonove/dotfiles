@@ -14,7 +14,10 @@ set $mod Mod4
 # kitten __atexit__), ~110-125 МБ на окно. Разбор: ~/.system-setup/kitty-single-instance-memory.md
 set $term /usr/bin/kitty --single-instance
 # Chrome нативным Wayland (ozone сам выберет wayland при наличии WAYLAND_DISPLAY).
-set $browser google-chrome-stable --ozone-platform-hint=auto
+# --no-default-browser-check: браузером по умолчанию стоит не он, а обёртка над
+# ним (.local/bin/browser-here) — без флага Chrome на старте предлагает «сделать
+# по умолчанию», и согласие молча снимает обёртку.
+set $browser google-chrome-stable --ozone-platform-hint=auto --no-default-browser-check
 # Лаунчер. В старом конфиге был fuzzel, но его не ставили; взят wofi — умеет
 # то же самое. Режим (drun) и оформление живут в ~/.config/wofi/, чтобы голый
 # `wofi` из терминала вёл себя как бинд, — отсюда здесь просто имя.
