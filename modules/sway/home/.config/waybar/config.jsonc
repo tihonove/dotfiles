@@ -65,7 +65,7 @@
         "tooltip-format": "{app}: {title}"
     },
 
-    // Раскладка us/ru — переключается Win+Space (см. sway config).
+    // Раскладка us/ru — переключается Caps Lock или Win+Space (см. sway config).
     //
     // Родной sway/language отсюда убран: он показывает раскладку любого
     // устройства, о котором пришло событие, а wtype (им content-tab
