@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Открыть каталог в diode ГЛАВНОЙ панелью текущего окна tmux.
+#
+#   diode-here [каталог]        # по умолчанию — текущий
+#
+# Сценарий: в окне одна панель с Клодом, он что-то наделал, хочется посмотреть.
+# Скрипт режет окно, ставит diode слева на 66% (main-vertical, ширина — из
+# main-pane-width в tmux.conf), а Клод уезжает в колонку справа. Закрыл diode —
+# панель схлопнулась, Клод снова один во всё окно.
+#
+# Зачем отдельный скрипт, а не `split-window diode`. Главная панель в
+# main-vertical — та, что первая в списке панелей окна. `split-window -b`
+# ставит новую ПЕРЕД текущей, но если текущая сама не первая (в окне уже есть
+# ещё панели), новая первой не станет. Поэтому после разбивки — swap-pane с
+# тем, что в левом верхнем углу; из одной панели это холостой ход, но условие
+# общее.
+#
+# Целевое окно — то, где панель ВЫЗЫВАЮЩЕГО ($TMUX_PANE), а не активное окно
+# клиента: пока агент работал, человек мог уйти в другое окно, и резать надо
+# не его. Активное окно клиента скрипт не трогает, фокус меняет только внутри
+# целевого.
+#
+# Повторный вызов на тот же каталог не плодит второй diode: панель помечена
+# @diode_dir, найдётся — снова станет главной и получит фокус. Другой каталог
+# — другой diode, это честно.
+
+set -euo pipefail
+
+dir=$(realpath -- "${1:-.}")
+[[ -d $dir ]] || { echo "diode-here: нет каталога $dir" >&2; exit 1; }
+
+if [[ -z ${TMUX:-} || -z ${TMUX_PANE:-} ]]; then
+    # Живой терминал без tmux — просто редактор. Не терминал (агент, пайп) —
+    # TUI повиснет намертво, лучше сразу отказ.
+    [[ -t 0 && -t 1 ]] || { echo "diode-here: не в tmux и не в терминале" >&2; exit 1; }
+    exec diode "$dir"
+fi
+
+win=$(tmux display-message -t "$TMUX_PANE" -p '#{session_id}:#{window_id}')
+
+pane=$(tmux list-panes -t "$win" -F '#{pane_id} #{@diode_dir}' \
+       | awk -v d="$dir" '$2 == d { print $1; exit }')
+
+if [[ -z $pane ]]; then
+    pane=$(tmux split-window -b -h -P -F '#{pane_id}' -t "$TMUX_PANE" -c "$dir" -- diode "$dir")
+    tmux set-option -p -t "$pane" @diode_dir "$dir"
+fi
+
+top_left=$(tmux display-message -t "$win.{top-left}" -p '#{pane_id}')
+[[ $pane == "$top_left" ]] || tmux swap-pane -s "$pane" -t "$top_left"
+tmux select-layout -t "$win" main-vertical
+tmux select-pane -t "$pane"
+
+echo "$pane"
