@@ -99,6 +99,17 @@ on_external_power() {
     [ "$(read_or /sys/class/power_supply/qcom-battmgr-usb/online 0)" = 1 ] && return 0
     [ "$(read_or /sys/class/power_supply/qcom-battmgr-ac/online 0)" = 1 ] && return 0
     [ "$(read_or /sys/class/power_supply/qcom-battmgr-bat/status Unknown)" = Charging ] && return 0
+    # Не X13s: имена источников у каждой машины свои (AC/BAT0 на ThinkPad x86),
+    # поэтому дальше — по типу. Сеть (Mains) или USB-источник с online=1, либо
+    # любая батарея, которая прямо сейчас заряжается.
+    local d
+    for d in /sys/class/power_supply/*; do
+        [ -d "$d" ] || continue
+        case "$(read_or "$d/type" "")" in
+            Mains|USB) [ "$(read_or "$d/online" 0)" = 1 ] && return 0 ;;
+            Battery)   [ "$(read_or "$d/status" Unknown)" = Charging ] && return 0 ;;
+        esac
+    done
     return 1
 }
 
