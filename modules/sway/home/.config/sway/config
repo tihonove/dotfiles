@@ -12,7 +12,7 @@ set $mod Mod4
 # --single-instance: все окна обслуживает один процесс kitty. Без него каждое
 # окно — независимый инстанс (свой питон, кэши глифов, GPU-контекст + хелпер
 # kitten __atexit__), ~110-125 МБ на окно. Разбор: ~/.system-setup/kitty-single-instance-memory.md
-set $term /usr/bin/kitty --single-instance
+set $term kitty --single-instance
 # Chrome нативным Wayland (ozone сам выберет wayland при наличии WAYLAND_DISPLAY).
 # --no-default-browser-check: браузером по умолчанию стоит не он, а обёртка над
 # ним (.local/bin/browser-here) — без флага Chrome на старте предлагает «сделать
