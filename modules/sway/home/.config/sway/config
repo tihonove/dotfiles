@@ -239,6 +239,10 @@ bindsym --to-code $mod+Shift+9 move container to workspace number 9
 # Переход между столами: предыдущий / следующий
 bindsym --to-code $mod+Ctrl+h workspace prev
 bindsym --to-code $mod+Ctrl+l workspace next
+# Увезти текущий стол на соседний монитор: PgUp — влево, PgDn — вправо.
+# С крайнего монитора стол уезжает на противоположный (left/right заворачивают).
+bindsym --to-code $mod+Ctrl+Prior move workspace to output left
+bindsym --to-code $mod+Ctrl+Next move workspace to output right
 # Новый пустой стол — верхняя ступень того же «создать по Enter» (таблица в
 # разделе «Вкладки внутри окна»). Своей команды у sway нет: `workspace` ходит по
 # номеру, а next/prev — только по существующим столам, «на первый свободный»
