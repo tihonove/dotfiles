@@ -1,0 +1,22 @@
+# Простой сессии sway: приглушить — погасить — заблокировать — усыпить.
+# Вся логика в ~/.local/bin/idle-guard, юнит — только чтобы демон жил вне
+# дерева sway и переживал $mod+Shift+C.
+#
+# [Install]-секции нет намеренно: стартует его exec_always из
+# ~/.config/sway/config, той же цепочкой, что и dunst, — строго ПОСЛЕ
+# dbus-update-activation-environment, иначе swaymsg внутри не найдёт SWAYSOCK.
+# Сам по себе, из graphical-session.target, он бы стартанул и в GNOME.
+
+[Unit]
+Description=idle-guard: простой сессии sway (swayidle с профилями питания)
+Documentation=file://%h/.local/bin/idle-guard
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/idle-guard run
+# SIGTERM, не KILL: swayidle на нём доигрывает resume-команды и сам зажигает
+# экран, если гасил его. Скрипт это знает и передаёт TERM дальше.
+KillMode=mixed
+TimeoutStopSec=10
+Restart=on-failure
+RestartSec=3
