@@ -14,6 +14,9 @@ CLAUDE.local.md
 # протащить — поэтому держу здесь. Вне работы эти пути не встречаются.
 FRONT_REVIEWER.md
 gbuild
+build.gradle.kts
+settings.gradle.kts
+.gradle/
 nci/tsunami/docs/architecture/
 nci/.settings/org.eclipse.buildship.core.prefs
 nci/.settings/org.eclipse.jdt.core.prefs
