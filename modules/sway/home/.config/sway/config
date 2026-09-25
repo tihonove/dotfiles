@@ -177,6 +177,10 @@ exec_always $HOME/.local/bin/clip-history daemon
 # Enter «создаёт» на каждом уровне; какой — говорит модификатор, таблица в
 # разделе «Вкладки внутри окна».
 bindsym --to-code $mod+Return   exec $term
+# Терминал сразу в tmux на удалённой машине: машину выбирает wofi, сессию —
+# штатный choose-tree уже внутри tmux, prefix N там же создаёт новую. Разбор —
+# в .local/bin/tmux-go.
+bindsym --to-code $mod+Shift+Return exec tmux-go
 bindsym --to-code $mod+b        exec $browser
 bindsym --to-code $mod+d        exec $menu
 # Мониторы: GUI-раскладка мышью, по закрытию окна набор запоминается профилем.
