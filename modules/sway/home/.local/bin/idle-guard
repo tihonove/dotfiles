@@ -37,11 +37,32 @@
 # на это ровно InhibitDelayMaxSec из logind.conf — в этой системе 30 с, их ставит
 # дропин unattended-upgrades (свой «10-…» его не перекроет, см. журнал).
 #
+# Крышка: сон с отсрочкой. logind усыпляет по крышке мгновенно, и сеть падает
+# вместе с ним. Хочется иначе: закрыл — замок и чёрный экран сразу, а сеть,
+# ssh и загрузки живут ещё LID_SUSPEND_SEC и только потом сон. Задержки logind
+# не умеет, поэтому:
+#
+#   run держит инхибитор handle-lid-switch ──> logind крышку не обрабатывает
+#   sway bindswitch lid:on  ──> idle-guard lid-close: замок, экран, таймер сна
+#   sway bindswitch lid:off ──> idle-guard lid-open: снять таймер, зажечь экран
+#   цикл run раз в POWER_POLL_SEC: крышка закрыта, дока нет, таймера нет ──>
+#     взвести короткий (LID_RESUSPEND_SEC) — это проснулись с закрытой крышкой
+#     или выдернули монитор при закрытой крышке
+#
+# Страховка — сам инхибитор: он живёт, пока жив процесс. Упал idle-guard или
+# sway — блокировка исчезает, и logind снова усыпляет по крышке сразу, по
+# своему дропину 10-x13s-lid.conf. Вечно бодрствующего ноутбука в рюкзаке не
+# получится. LID_SUSPEND_SEC=0 — инхибитор не берётся вовсе, всё как раньше.
+#
+# С внешним монитором (logind Docked=true) крышка ничего не делает, как и в
+# дропине: HandleLidSwitchDocked=ignore.
+#
 # Использование:
 #   idle-guard run          — главный цикл (его запускает idle-guard.service)
 #   idle-guard status       — профиль, действующие времена, pid swayidle
 #   idle-guard argv [ac|bat] — показать argv, с которым запустится swayidle
 #   idle-guard lock         — заблокировать сейчас (идемпотентно)
+#   idle-guard lid-close|lid-open — крышка (зовёт bindswitch из конфига sway)
 #   idle-guard screen-off|screen-on|dim|undim — отдельные стадии, для отладки
 #
 # Откат, если что-то пошло не так и экран гаснет не вовремя:
@@ -69,6 +90,10 @@ BAT_LOCK_SEC=300
 BAT_SUSPEND_SEC=900
 POWER_POLL_SEC=15
 DIM_LEVEL=10%
+LID_SUSPEND_SEC=900
+LID_RESUSPEND_SEC=60
+
+LID_UNIT=idle-guard-lid-suspend
 
 # panel.conf подключается из самого config, а не здесь: порядок «рукописное,
 # потом панель» должен быть виден в одном месте — в самом конфиге.
@@ -186,6 +211,85 @@ do_screen_on()  { ensure_wayland_env; swaymsg 'output * power on'  >/dev/null; }
 do_dim() { brightnessctl -s set "$DIM_LEVEL" >/dev/null; }
 do_undim() { brightnessctl -r >/dev/null 2>&1 || true; }
 
+# --- крышка ------------------------------------------------------------------
+
+login1_bool() { # $1 свойство Manager у logind; успех, если true
+    [ "$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
+        org.freedesktop.login1.Manager "$1" 2>/dev/null)" = "b true" ]
+}
+
+lid_timer_armed() { systemctl --user is-active --quiet "$LID_UNIT.timer"; }
+
+lid_disarm() {
+    systemctl --user stop "$LID_UNIT.timer" "$LID_UNIT.service" 2>/dev/null || true
+    systemctl --user reset-failed "$LID_UNIT.timer" "$LID_UNIT.service" 2>/dev/null || true
+}
+
+# Транзиентный таймер, а не sleep в фоне: переживает рестарт idle-guard и
+# виден в `systemctl --user list-timers`. Часы монотонные — во сне не идут,
+# но и не надо: к моменту сна таймер уже отработал.
+# Отработавший транзиентный таймер выгружается сам (RemainAfterElapsed транзиенту
+# не задать, да и не нужно — проверено), и lid_timer_armed говорит «нет»: на
+# этом держится повторный взвод после пробуждения.
+lid_arm() { # $1 — секунды до сна
+    lid_disarm
+    systemd-run --user --quiet --collect --unit="$LID_UNIT" \
+        --on-active="${1}s" --timer-property=AccuracySec=1s \
+        --description="idle-guard: сон через ${1} с после закрытия крышки" \
+        systemctl suspend
+    log "крышка: сон через ${1} с"
+}
+
+cmd_lid_close() {
+    load_config
+    [ "$LID_SUSPEND_SEC" -gt 0 ] 2>/dev/null || return 0   # крышку ведёт logind
+    login1_bool Docked && return 0
+    do_lock || true
+    do_screen_off || true
+    lid_arm "$LID_SUSPEND_SEC"
+}
+
+cmd_lid_open() {
+    lid_disarm
+    do_screen_on || true
+}
+
+# Страховочный взвод из главного цикла, см. шапку.
+lid_check() {
+    [ "$LID_SUSPEND_SEC" -gt 0 ] 2>/dev/null || return 0
+    login1_bool LidClosed || return 0
+    login1_bool Docked && return 0
+    lid_timer_armed && return 0
+    log "крышка закрыта без таймера (проснулись или сняли монитор)"
+    do_lock || true
+    do_screen_off || true   # after-resume у swayidle зажёг и панель под крышкой
+    lid_arm "$LID_RESUSPEND_SEC"
+}
+
+INHIBIT_PID=""
+
+# Инхибитор держит отдельный процесс-заглушка: блокировка logind живёт ровно
+# столько, сколько держатель, и умирает вместе с юнитом (KillMode=mixed).
+inhibit_sync() {
+    if [ "$LID_SUSPEND_SEC" -gt 0 ] 2>/dev/null; then
+        if [ -z "$INHIBIT_PID" ] || ! kill -0 "$INHIBIT_PID" 2>/dev/null; then
+            systemd-inhibit --what=handle-lid-switch --mode=block --who=idle-guard \
+                --why="сон по крышке с отсрочкой ${LID_SUSPEND_SEC} с" sleep infinity &
+            INHIBIT_PID=$!
+            log "крышка: сон с отсрочкой ${LID_SUSPEND_SEC} с (инхибитор pid $INHIBIT_PID)"
+        fi
+    else
+        inhibit_release
+    fi
+}
+
+inhibit_release() {
+    [ -n "$INHIBIT_PID" ] || return 0
+    kill "$INHIBIT_PID" 2>/dev/null || true
+    wait "$INHIBIT_PID" 2>/dev/null || true
+    INHIBIT_PID=""
+}
+
 # --- сборка argv для swayidle ------------------------------------------------
 
 declare -A STAGE_ACTION STAGE_RESUME
@@ -259,7 +363,7 @@ stop_swayidle() {
 }
 
 cmd_run() {
-    trap 'stop_swayidle; exit 0' TERM INT
+    trap 'stop_swayidle; inhibit_release; exit 0' TERM INT
     local current="" p
     while :; do
         load_config
@@ -273,6 +377,8 @@ cmd_run() {
             log "профиль: $p ($STAGE_TIMES), swayidle pid $IDLE_PID"
             current="$p"
         fi
+        inhibit_sync
+        lid_check
         # sleep фоном + wait: иначе bash доигрывает trap только после возврата
         # из sleep, и systemctl stop ждал бы до конца интервала.
         sleep "$POWER_POLL_SEC" &
@@ -297,6 +403,14 @@ cmd_status() {
     echo "swayidle: $(pgrep -x swayidle | tr '\n' ' ' || echo '—')"
     echo "swaylock: $(pgrep -x swaylock >/dev/null && echo 'экран заблокирован' || echo 'нет')"
     echo "конфиг:   $CONFIG_DIR/config$([ -r "$CONFIG_DIR/panel.conf" ] && echo ' + panel.conf')"
+    local lid
+    lid="$(login1_bool LidClosed && echo закрыта || echo открыта)"
+    login1_bool Docked && lid="$lid, внешний монитор"
+    if [ "$LID_SUSPEND_SEC" -gt 0 ] 2>/dev/null; then
+        echo "крышка:   $lid; сон через $LID_SUSPEND_SEC с, таймер $(lid_timer_armed && echo взведён || echo нет)"
+    else
+        echo "крышка:   $lid; ведёт logind (сон сразу)"
+    fi
 }
 
 case "${1:-}" in
@@ -309,8 +423,10 @@ case "${1:-}" in
     screen-on)  do_screen_on ;;
     dim)        load_config; do_dim ;;
     undim)      do_undim ;;
+    lid-close)  cmd_lid_close ;;
+    lid-open)   cmd_lid_open ;;
     *)
-        echo "использование: idle-guard {run|status|argv|lock|unlock|screen-off|screen-on|dim|undim}" >&2
+        echo "использование: idle-guard {run|status|argv|lock|unlock|lid-close|lid-open|screen-off|screen-on|dim|undim}" >&2
         exit 2
         ;;
 esac

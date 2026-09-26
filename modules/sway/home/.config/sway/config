@@ -374,6 +374,14 @@ bindsym --to-code $mod+Shift+n exec notify-open list
 # одним путём через событие `lock` у swayidle. Демон поднимает idle-guard.
 bindsym --to-code Ctrl+Alt+q exec loginctl lock-session
 
+### Крышка — сон с отсрочкой
+# Закрыл: замок и чёрный экран сразу, сон через LID_SUSPEND_SEC (15 мин), сеть
+# живёт. Открыл раньше — таймер снимается. Вся логика и страховка (инхибитор
+# logind, без idle-guard крышка снова усыпляет сразу) — в ~/.local/bin/idle-guard.
+# --locked обязателен: крышку открывают как раз под замком.
+bindswitch --locked lid:on  exec ~/.local/bin/idle-guard lid-close
+bindswitch --locked lid:off exec ~/.local/bin/idle-guard lid-open
+
 # Не перенесено из старого конфига — нужен пакет, которого не ставили:
 #   MRU-переключение окон — демон, помнящий историю фокуса. $mod+Tab ходит
 #   по окнам в порядке раскладки (window-cycle, раздел «Фокус»); MRU к нему
