@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Лиза на тяжёлый прогон: слот ресурса держится flock'ом на время команды.
 #
-#   claude-lease run [-r ресурс] [-w секунд] -- <команда...>
+#   claude-lease run [-r ресурс] [-w секунд|inf] -- <команда...>   (по умолчанию -w inf)
 #   claude-lease status            # кто держит слоты, нет ли осиротевших прогонов
 #   claude-lease reap              # добить осиротевшие прогоны (слот свободен, процесс жив)
 #   claude-lease break <ресурс>    # снести текущего держателя намеренно
@@ -20,8 +20,14 @@
 #      группы, а `reap` их добивает.
 #   2. Держатель завис навсегда (слот занят законно, но работы нет) — `status`
 #      печатает возраст лизы, `break` сносит держателя.
-#   3. Ожидающий отпал по таймауту Bash — ждём не дольше `-w` (по умолчанию 600с,
-#      это максимум таймаута Bash-инструмента) и выходим кодом 75, НЕ запустив прогон.
+#   3. Ожидающий не дождался. По умолчанию лиза ждёт БЕЗ ограничения по времени —
+#      и это осознанно: мутационный гейт идёт по 40 минут, за ним в очереди стоят
+#      ещё двое, и любой конечный бюджет рано или поздно истекает на ровном месте.
+#      Агент читает ненулевой код как красный прогон и начинает чинить несломанное,
+#      так что «просто виси в очереди» здесь честнее любого отказа: Bash-инструмент
+#      на 120-й секунде уводит команду в фон сам и разбудит по завершении.
+#      Нужен отказ вместо ожидания — `-w <секунд>` (тогда выход кодом 75) или
+#      `-w 0` (не ждать вовсе).
 #
 # Каталог слотов должен лежать на локальной ФС: на NFS семантика flock другая и
 # полагаться на неё нельзя.
@@ -38,7 +44,7 @@ LEASE_HOME="${CLAUDE_LEASE_HOME:-$HOME/.claude/lease}"
 CAPACITY_FILE="$LEASE_HOME/capacity"
 SLOT_DIR="$LEASE_HOME/slots"
 MATCH="${CLAUDE_LEASE_LIB:-$HOME/.local/lib/claude-lease}/match"
-DEFAULT_WAIT="${CLAUDE_LEASE_WAIT:-600}"
+DEFAULT_WAIT="${CLAUDE_LEASE_WAIT:-inf}"
 
 die() { printf 'лиза: %s\n' "$*" >&2; exit 2; }
 note() { printf 'лиза: %s\n' "$*" >&2; }
@@ -166,8 +172,18 @@ cmd_run() {
     local res="" wait_s="$DEFAULT_WAIT"
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -r | --resource) res="${2:-}"; shift 2 ;;
-            -w | --wait) wait_s="${2:-}"; shift 2 ;;
+            -r | --resource)
+                res="${2:-}"
+                [[ -n "$res" && "$res" != -* ]] || die "-r без имени ресурса"
+                shift 2
+                ;;
+            -w | --wait)
+                wait_s="${2:-}"
+                # Без проверки `-w --` уезжал в арифметику и падал невнятной
+                # ошибкой bash вместо внятного отказа.
+                [[ "$wait_s" =~ ^([0-9]+|inf)$ ]] || die "-w ждёт число секунд или inf, а не «${wait_s:-<пусто>}»"
+                shift 2
+                ;;
             --) shift; break ;;
             -*) die "неизвестный флаг $1" ;;
             *) break ;;
@@ -189,7 +205,9 @@ cmd_run() {
     # Сироты прошлых прогонов (обёртку убили -9, прогон остался) — добить ДО захвата:
     # иначе возьмём свободный слот и получим два тяжёлых прогона разом.
     for_each_slot reap_slot
-    local deadline=$((SECONDS + wait_s)) got=0 i slot announced=0 nagged=0
+    local infinite=0 deadline=0
+    if [[ "$wait_s" == inf ]]; then infinite=1; else deadline=$((SECONDS + wait_s)); fi
+    local got=0 i slot announced=0 nagged=0 warned=0 started=$SECONDS
     while :; do
         for ((i = 1; i <= n; i++)); do
             slot="$SLOT_DIR/${res}.${i}"
@@ -199,19 +217,45 @@ cmd_run() {
             exec 9>&-
         done
         ((got)) && break
-        if ((SECONDS >= deadline)); then
-            note "ресурс «$res» занят целиком ($n из $n), ждал ${wait_s}с — прогон НЕ запускался."
+        if ((!infinite)) && ((SECONDS >= deadline)); then
+            # Код 75 (EX_TEMPFAIL) — «занято», а не «упало». Формулировки здесь
+            # важны не меньше кода: это сообщение читает агент, и приняв его за
+            # красный прогон, он начинает чинить несломанное.
+            note "СЛОТ НЕ ПОЛУЧЕН: ресурс «$res» занят целиком ($n из $n), ждал ${wait_s}с."
+            note "Прогон НЕ запускался — это не падение тестов и не ошибка команды (код 75)."
             cmd_status >&2
-            note "повтори позже, или загляни в claude-lease status / break, если держатель завис."
+            note "Ограничение ${wait_s}с задано флагом -w этого вызова; без -w лиза ждала бы"
+            note "столько, сколько нужно. Что делать: повторить позже или без -w; если держатель"
+            note "завис — claude-lease status и claude-lease break $res."
             exit 75
         fi
+        local elapsed=$((SECONDS - started))
         if ((!announced)); then
             announced=1
-            note "ресурс «$res» занят, жду свободный слот (до ${wait_s}с)..."
-            cmd_status >&2
-        elif ((SECONDS - nagged >= 60)); then
             nagged=$SECONDS
-            note "всё ещё жду «$res», прошло $((SECONDS))с из ${wait_s}с"
+            if ((infinite)); then
+                note "ресурс «$res» занят — стою в очереди, сколько потребуется (тяжёлый прогон идёт десятки минут)."
+            else
+                note "ресурс «$res» занят, жду свободный слот (до ${wait_s}с)..."
+            fi
+            cmd_status >&2
+        # Первые пять минут отмечаемся раз в минуту, дальше раз в пять: строка нужна
+        # как признак жизни в логе фоновой задачи, а не как поток сообщений на сорок
+        # минут ожидания.
+        elif ((SECONDS - nagged >= (elapsed < 300 ? 60 : 300))); then
+            nagged=$SECONDS
+            if ((infinite)); then
+                note "всё ещё в очереди за «$res», жду $((elapsed / 60)) мин"
+            else
+                note "всё ещё жду «$res», прошло ${elapsed}с из ${wait_s}с"
+            fi
+        fi
+        # Ждать час-другой нормально, а вот пол дня — уже похоже на зависшего
+        # держателя. Не бросаем очередь, но говорим об этом всё громче.
+        if ((infinite)) && ((elapsed >= 7200)) && ((SECONDS - warned >= 1800)); then
+            warned=$SECONDS
+            note "ВНИМАНИЕ: жду «$res» уже $((elapsed / 3600)) ч. Если держатель завис —"
+            note "claude-lease status, и claude-lease break $res, чтобы снести его."
         fi
         sleep 5
     done
