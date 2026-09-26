@@ -34,7 +34,6 @@
         "tray",
         "idle_inhibitor",
         "pulseaudio",
-        "custom/camera",
         "custom/system",
         "custom/theme",
         "custom/language",
@@ -122,20 +121,6 @@
         "return-type": "json",
         "exec": "$HOME/.local/bin/sys-status",
         "interval": 3
-    },
-
-    // Конвейер обработки камеры (x13s-camera-pipeline).
-    // Буквы — стадии: Ш шумодав, Ц цвет, Ч чёрная точка, Т тени, К контраст,
-    // С свет на лицо, З слежение. Яркая — включена, тусклая — выключена.
-    // Иконка краснеет, когда камера реально снимает.
-    "custom/camera": {
-        "format": "{}",
-        "return-type": "json",
-        "exec": "$HOME/.local/bin/campipe-ctl waybar",
-        "on-click": "$HOME/.local/bin/campipe-ctl menu",
-        "on-click-right": "$HOME/.local/bin/campipe toggle",
-        "interval": 2,
-        "signal": 9
     },
 
     // Иконка — батарейка с делениями, шаг 10%: waybar сам делит 0..100 на длину
