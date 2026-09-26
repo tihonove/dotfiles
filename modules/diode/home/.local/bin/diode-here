@@ -31,7 +31,8 @@ dir=$(realpath -- "${1:-.}")
 
 if [[ -z ${TMUX:-} || -z ${TMUX_PANE:-} ]]; then
     # Сессия из `claude agents` сидит в pty демона, а не в панели: tmux-host-env
-    # найдёт панель, где открыт `claude agents`, — туда diode и встанет.
+    # найдёт tmux-сессию, где человек последним печатал, и `claude agents` в
+    # ней (или активную панель), — туда diode и встанет.
     # DIODE_HERE_REEXEC — от бесконечного цикла, если панель найдена, а
     # окружение почему-то не доехало.
     if [[ -z ${DIODE_HERE_REEXEC:-} ]] && tmux-host-env >/dev/null 2>&1; then

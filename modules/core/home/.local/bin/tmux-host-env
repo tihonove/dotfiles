@@ -8,20 +8,22 @@
 # (diode-here, /tmux-continue), опираются на $TMUX_PANE — «панель, где я».
 # Сессия, запущенная из `claude agents`, живёт не в панели tmux, а в pty у
 # демона агентов: её предки — `claude bg-pty-host` → `claude daemon run`, до
-# tmux-сервера цепочка не доходит, и $TMUX пуст. Человек же смотрит на неё из
-# панели, где запущен `claude agents` — туда и надо открывать.
+# tmux-сервера цепочка не доходит, и $TMUX пуст. Открывать тогда надо там, где
+# человек сейчас печатает, а не там, откуда когда-то подняли демон: он общий
+# на все `claude agents`, и человек мог давно уйти в другую сессию tmux.
 #
-# Как находим, по убыванию надёжности:
+# Как находим:
 #
 #   1. $TMUX уже есть — обычный запуск в панели, печатаем как есть.
-#   2. Идём по предкам. У кого в environ есть TMUX — тот и ответ. Встретили
-#      `claude daemon run ... --spawned-by {"pid":N,...}` — прыгаем к N (это
-#      `claude agents`, поднявший демон) и продолжаем от него. Так находится
-#      именно ТА панель, из которой запущена эта сессия, даже если `claude
-#      agents` открыт в нескольких.
-#   3. Демон не транзиентный (spawned-by нет или тот процесс уже умер) — берём
-#      `claude agents` среди живых процессов, если он в tmux ровно один. Их
-#      несколько — угадывать не будем, отказ.
+#   2. Сокет сервера. Идём по предкам; на `claude daemon run --spawned-by
+#      {"pid":N}` прыгаем к N — это `claude agents`, у него в environ TMUX.
+#      Не вышло — единственный живой `claude agents` в tmux. И этого нет —
+#      сокет по умолчанию.
+#   3. Сессия — та, в которой клиент с самой свежей активностью
+#      (client_activity обновляется на каждое нажатие). Панель в ней —
+#      `claude agents`, если он там открыт (лучше в текущем окне сессии): это
+#      и есть «где я» для агентской сессии. Иначе — активная панель сессии.
+#   4. Клиентов нет вовсе — панель `claude agents` из п. 2, если нашлась.
 #
 # С аргументами — exec команды с выставленными TMUX/TMUX_PANE (форма для
 # скилов: `eval "$(...)"` агентские песочницы режут как непроверяемое). Без
@@ -66,10 +68,20 @@ spawned_by_of() {
         | grep -o '"pid": *[0-9]*' | grep -o '[0-9]*$'
 }
 
+# Все живые `claude agents` в tmux — их «TMUX<таб>TMUX_PANE».
+agents=()
+for p in $(pgrep -u "$(id -u)" -x claude); do
+    [[ $(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null) == claude\ agents* ]] || continue
+    env=$(tmux_env_of "$p") && agents+=("$env")
+done
+
+# 2. Панель `claude agents`, поднявшего эту сессию, — ради сокета и на крайний
+# случай п. 4.
+hint=''
 pid=$PPID
 while [[ -n $pid && $pid -gt 1 ]]; do
-    if env=$(tmux_env_of "$pid"); then
-        found "${env%%$'\t'*}" "${env#*$'\t'}" "$@"
+    if hint=$(tmux_env_of "$pid"); then
+        break
     fi
     if next=$(spawned_by_of "$pid") && [[ -n $next && -d /proc/$next ]]; then
         pid=$next
@@ -77,15 +89,39 @@ while [[ -n $pid && $pid -gt 1 ]]; do
     fi
     pid=$(awk '/^PPid:/ { print $2 }' "/proc/$pid/status" 2>/dev/null)
 done
+if [[ -z $hint ]] && (( ${#agents[@]} == 1 )); then
+    hint=${agents[0]}
+fi
 
-candidates=()
-for p in $(pgrep -u "$(id -u)" -x claude); do
-    [[ $(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null) == claude\ agents* ]] || continue
-    env=$(tmux_env_of "$p") && candidates+=("$env")
-done
-if (( ${#candidates[@]} == 1 )); then
-    env=${candidates[0]}
-    found "${env%%$'\t'*}" "${env#*$'\t'}" "$@"
+if [[ -n $hint ]]; then
+    sock=${hint%%,*}
+else
+    sock=$(tmux display-message -p '#{socket_path}' 2>/dev/null)
+fi
+T=(tmux -S "$sock")
+
+# 3. Сессия последнего активного клиента.
+session=$("${T[@]}" list-clients -F '#{client_activity} #{session_id}' 2>/dev/null \
+          | sort -n | tail -n1 | cut -d' ' -f2)
+if [[ -n $sock && -n $session ]]; then
+    cur_win=$("${T[@]}" display-message -p -t "$session" '#{window_id}')
+    pane=''
+    for env in "${agents[@]}"; do
+        [[ ${env%%,*} == "$sock" ]] || continue
+        p=${env#*$'\t'}
+        read -r s w < <("${T[@]}" display-message -p -t "$p" '#{session_id} #{window_id}' 2>/dev/null)
+        [[ ${s:-} == "$session" ]] || continue
+        pane=${pane:-$p}
+        if [[ $w == "$cur_win" ]]; then pane=$p; break; fi
+    done
+    [[ -n $pane ]] || pane=$("${T[@]}" display-message -p -t "$session" '#{pane_id}')
+    srv_pid=$("${T[@]}" display-message -p '#{pid}')
+    found "$sock,$srv_pid,${session#\$}" "$pane" "$@"
+fi
+
+# 4. Клиентов нет — хотя бы панель `claude agents`.
+if [[ -n $hint ]]; then
+    found "${hint%%$'\t'*}" "${hint#*$'\t'}" "$@"
 fi
 
 echo "tmux-host-env: не нашёл tmux-панель этой сессии" >&2
