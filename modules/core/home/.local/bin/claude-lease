@@ -1,0 +1,269 @@
+#!/usr/bin/env bash
+# Лиза на тяжёлый прогон: слот ресурса держится flock'ом на время команды.
+#
+#   claude-lease run [-r ресурс] [-w секунд] -- <команда...>
+#   claude-lease status            # кто держит слоты, нет ли осиротевших прогонов
+#   claude-lease reap              # добить осиротевшие прогоны (слот свободен, процесс жив)
+#   claude-lease break <ресурс>    # снести текущего держателя намеренно
+#   claude-lease capacity [ресурс]
+#
+# Почему без хартбитов. Слот — это flock на файле, а flock держит ЯДРО, пока жив
+# процесс. Убили -9, упал OOM-killer, перезапустился агент, ребутнулась машина —
+# блокировка снимается сама, застрявших лиз не бывает по устройству. Хартбиты и
+# TTL нужны схемам на pid-файлах; здесь их нечем страховать.
+#
+# Что всё-таки может пойти не так и как это закрыто:
+#   1. Нас убили, а тяжёлый процесс осиротел и продолжает жрать CPU при уже
+#      свободном слоте. Дочерний прогон запускается в СВОЕЙ группе процессов, по
+#      TERM/INT/HUP мы валим всю группу и не отдаём слот, пока она не умерла.
+#      Пережить SIGKILL мы не можем — поэтому `status` показывает осиротевшие
+#      группы, а `reap` их добивает.
+#   2. Держатель завис навсегда (слот занят законно, но работы нет) — `status`
+#      печатает возраст лизы, `break` сносит держателя.
+#   3. Ожидающий отпал по таймауту Bash — ждём не дольше `-w` (по умолчанию 600с,
+#      это максимум таймаута Bash-инструмента) и выходим кодом 75, НЕ запустив прогон.
+#
+# Каталог слотов должен лежать на локальной ФС: на NFS семантика flock другая и
+# полагаться на неё нельзя.
+#
+# Три уровня, и путать их нельзя:
+#   код (этот файл и lib/claude-lease/*) — dotfiles, приезжает на все машины;
+#   ёмкости ~/.claude/lease/capacity     — машина, сколько чего есть ЗДЕСЬ (вне репы);
+#   политика .claude/leases.json         — репозиторий проекта, что брать под лизу.
+set -uo pipefail
+
+# Состояние — в ~/.claude/lease (ёмкости правит человек, слоты пишем мы),
+# код — в ~/.local/lib/claude-lease (симлинки из dotfiles).
+LEASE_HOME="${CLAUDE_LEASE_HOME:-$HOME/.claude/lease}"
+CAPACITY_FILE="$LEASE_HOME/capacity"
+SLOT_DIR="$LEASE_HOME/slots"
+MATCH="${CLAUDE_LEASE_LIB:-$HOME/.local/lib/claude-lease}/match"
+DEFAULT_WAIT="${CLAUDE_LEASE_WAIT:-600}"
+
+die() { printf 'лиза: %s\n' "$*" >&2; exit 2; }
+note() { printf 'лиза: %s\n' "$*" >&2; }
+
+# Ёмкость ресурса на этой машине. Пусто = не ограничиваем.
+capacity_of() {
+    [[ -r "$CAPACITY_FILE" ]] || return 0
+    sed -n -E "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*([0-9]+).*$/\1/p" "$CAPACITY_FILE" | tail -1
+}
+
+slot_busy() { ! flock -n "$1" true >/dev/null 2>&1; }
+
+field() { sed -n -E "s/^$2=(.*)$/\1/p" "$1" | tail -1; }
+
+group_alive() {
+    local pgid="$1"
+    [[ -n "$pgid" && "$pgid" =~ ^[0-9]+$ ]] || return 1
+    pgrep -g "$pgid" >/dev/null 2>&1
+}
+
+age_of() {
+    local epoch="$1" now
+    [[ -n "$epoch" && "$epoch" =~ ^[0-9]+$ ]] || { printf 'неизвестно'; return; }
+    now="$(date +%s)"
+    printf '%d мин' $(((now - epoch) / 60))
+}
+
+# Перебирает ресурсы из capacity: for_each_slot <колбэк>, колбэк получает ресурс, номер, файл.
+for_each_slot() {
+    local cb="$1" line res n i
+    [[ -r "$CAPACITY_FILE" ]] || return 0
+    while IFS= read -r line; do
+        line="${line%%#*}"
+        [[ "$line" == *=* ]] || continue
+        res="$(printf '%s' "${line%%=*}" | tr -d '[:space:]')"
+        n="$(printf '%s' "${line#*=}" | tr -d '[:space:]')"
+        [[ -n "$res" && "$n" =~ ^[0-9]+$ ]] || continue
+        for ((i = 1; i <= n; i++)); do "$cb" "$res" "$i" "$SLOT_DIR/${res}.${i}" "$n"; done
+    done <"$CAPACITY_FILE"
+}
+
+report_slot() {
+    local res="$1" i="$2" slot="$3" n="$4"
+    ((i == 1)) && printf '%s: слотов %s\n' "$res" "$n"
+    if [[ ! -e "$slot" ]]; then
+        printf '  #%d свободен\n' "$i"
+        return
+    fi
+    local pid pgid cmd epoch released
+    pid="$(field "$slot" pid)"
+    pgid="$(field "$slot" pgid)"
+    cmd="$(field "$slot" cmd)"
+    epoch="$(field "$slot" epoch)"
+    released="$(field "$slot" released)"
+    if slot_busy "$slot"; then
+        if kill -0 "$pid" 2>/dev/null; then
+            printf '  #%d занят уже %s: %s\n' "$i" "$(age_of "$epoch")" "${cmd:-без метки}"
+            printf '       сеанс %s, ветка %s, каталог %s, pid %s\n' \
+                "$(field "$slot" session)" "$(field "$slot" branch)" "$(field "$slot" cwd)" "$pid"
+        else
+            printf '  #%d занят, НО держателя (pid %s) уже нет — снимется само\n' "$i" "$pid"
+        fi
+        return
+    fi
+    if [[ -z "$released" ]] && group_alive "$pgid"; then
+        printf '  #%d свободен, НО прошлый прогон осиротел (группа %s, %s): %s\n' \
+            "$i" "$pgid" "$(age_of "$epoch")" "${cmd:-?}"
+        printf '       обёртку убили -9, прогон остался жрать CPU — добить: claude-lease reap\n'
+        printf '       (следующий claude-lease run добьёт его сам перед тем, как взять слот)\n'
+    else
+        printf '  #%d свободен\n' "$i"
+    fi
+}
+
+# Добить группу процессов, записанную в слоте, если она пережила своего держателя.
+kill_orphan_group() {
+    local slot="$1" what="$2" pgid
+    [[ -e "$slot" ]] || return 0
+    [[ -z "$(field "$slot" released)" ]] || return 0    # держатель вышел честно, прогона нет
+    pgid="$(field "$slot" pgid)"
+    group_alive "$pgid" || return 0
+    note "добиваю осиротевший прогон (группа $pgid, $what): $(field "$slot" cmd)"
+    kill -TERM -"$pgid" 2>/dev/null
+    local k
+    for ((k = 0; k < 20; k++)); do
+        group_alive "$pgid" || break
+        sleep 0.5
+    done
+    group_alive "$pgid" && kill -KILL -"$pgid" 2>/dev/null
+    printf 'released=%s\nreaped=%s\nwas=%s\n' "$(date -Is)" "$(date -Is)" "$(field "$slot" cmd)" >"$slot"
+}
+
+reap_slot() {
+    local res="$1" i="$2" slot="$3"
+    slot_busy "$slot" && return 0                       # держит живая обёртка — не наше дело
+    kill_orphan_group "$slot" "$res #$i"
+}
+
+cmd_status() {
+    if [[ ! -r "$CAPACITY_FILE" ]]; then
+        printf 'лиза: ёмкости не настроены (%s) — ограничений на этой машине нет\n' "$CAPACITY_FILE"
+        return 0
+    fi
+    for_each_slot report_slot
+}
+
+cmd_break() {
+    local res="${1:-}"
+    [[ -n "$res" ]] || die "кого сносим? claude-lease break <ресурс> [номер слота]"
+    local only="${2:-}" n i slot pgid killed=0
+    n="$(capacity_of "$res")"
+    [[ -n "$n" ]] || die "ресурс «$res» на этой машине не ограничен"
+    for ((i = 1; i <= n; i++)); do
+        [[ -n "$only" && "$only" != "$i" ]] && continue
+        slot="$SLOT_DIR/${res}.${i}"
+        [[ -e "$slot" ]] && slot_busy "$slot" || continue
+        pgid="$(field "$slot" pgid)"
+        note "сношу держателя $res #$i (группа $pgid, уже $(age_of "$(field "$slot" epoch)")): $(field "$slot" cmd)"
+        kill -TERM -"$pgid" 2>/dev/null && killed=1
+    done
+    ((killed)) || note "занятых слотов ресурса «$res» нет"
+}
+
+cmd_run() {
+    local res="" wait_s="$DEFAULT_WAIT"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -r | --resource) res="${2:-}"; shift 2 ;;
+            -w | --wait) wait_s="${2:-}"; shift 2 ;;
+            --) shift; break ;;
+            -*) die "неизвестный флаг $1" ;;
+            *) break ;;
+        esac
+    done
+    [[ $# -gt 0 ]] || die "нечего запускать: claude-lease run -- <команда>"
+    local cmdline="$*"
+
+    [[ -n "$res" ]] || res="$("$MATCH" resource "$cmdline" 2>/dev/null || true)"
+    # Проект не считает команду тяжёлой — просто запускаем.
+    [[ -n "$res" ]] || exec "$@"
+
+    local n
+    n="$(capacity_of "$res")"
+    # Машина этот ресурс не ограничивает — тоже просто запускаем.
+    [[ -n "$n" && "$n" != "0" ]] || exec "$@"
+
+    mkdir -p "$SLOT_DIR"
+    # Сироты прошлых прогонов (обёртку убили -9, прогон остался) — добить ДО захвата:
+    # иначе возьмём свободный слот и получим два тяжёлых прогона разом.
+    for_each_slot reap_slot
+    local deadline=$((SECONDS + wait_s)) got=0 i slot announced=0 nagged=0
+    while :; do
+        for ((i = 1; i <= n; i++)); do
+            slot="$SLOT_DIR/${res}.${i}"
+            : >>"$slot"
+            exec 9<>"$slot"
+            if flock -n 9; then got=1; break; fi
+            exec 9>&-
+        done
+        ((got)) && break
+        if ((SECONDS >= deadline)); then
+            note "ресурс «$res» занят целиком ($n из $n), ждал ${wait_s}с — прогон НЕ запускался."
+            cmd_status >&2
+            note "повтори позже, или загляни в claude-lease status / break, если держатель завис."
+            exit 75
+        fi
+        if ((!announced)); then
+            announced=1
+            note "ресурс «$res» занят, жду свободный слот (до ${wait_s}с)..."
+            cmd_status >&2
+        elif ((SECONDS - nagged >= 60)); then
+            nagged=$SECONDS
+            note "всё ещё жду «$res», прошло $((SECONDS))с из ${wait_s}с"
+        fi
+        sleep 5
+    done
+
+    # Слот наш, но метка в нём — от прошлого держателя. Если тот умер от -9, а его прогон
+    # остался жив, добить его надо здесь: перед циклом ожидания его ещё не было.
+    kill_orphan_group "$slot" "$res, прошлый держатель"
+
+    # Дочерний прогон — в своей группе процессов (set -m), чтобы валить его целиком
+    # вместе со всем, что он наплодил: npm → stryker → воркеры.
+    local child status=0 interrupted=0
+    set -m
+    "$@" 9>&- &
+    child=$!
+    set +m
+
+    printf 'pid=%s\npgid=%s\nepoch=%s\nstarted=%s\nsession=%s\ncwd=%s\nbranch=%s\ncmd=%s\n' \
+        "$$" "$child" "$(date +%s)" "$(date -Is)" \
+        "${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-неизвестен}}" "$PWD" \
+        "$(git branch --show-current 2>/dev/null || echo '-')" "$cmdline" >"$slot"
+    note "взял «$res» (слот ${slot##*/}), запускаю: $cmdline"
+
+    forward_term() {
+        interrupted=1
+        note "получил сигнал — валю прогон (группа $child) и держу слот, пока он не умрёт"
+        kill -TERM -"$child" 2>/dev/null
+    }
+    trap forward_term TERM INT HUP
+
+    wait "$child"
+    status=$?
+    if ((interrupted)); then
+        local k
+        for ((k = 0; k < 20; k++)); do
+            group_alive "$child" || break
+            sleep 0.5
+        done
+        group_alive "$child" && { note "группа $child не ушла по TERM — добиваю KILL"; kill -KILL -"$child" 2>/dev/null; }
+    fi
+
+    printf 'released=%s\nexit=%s\nwas=%s\n' "$(date -Is)" "$status" "$cmdline" >"$slot"
+    note "отдал «$res» (слот ${slot##*/}), код выхода $status"
+    exit "$status"
+}
+
+case "${1:-}" in
+    run) shift; cmd_run "$@" ;;
+    status) cmd_status ;;
+    reap) for_each_slot reap_slot ;;
+    break) shift; cmd_break "$@" ;;
+    capacity) shift; if [[ $# -gt 0 ]]; then capacity_of "$1"; else cat "$CAPACITY_FILE" 2>/dev/null; fi ;;
+    match) shift; "$MATCH" explain "$*" ;;
+    "" | -h | --help | help) awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0" ;;
+    *) die "неизвестная команда ${1}. См. claude-lease --help" ;;
+esac

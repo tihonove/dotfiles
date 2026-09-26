@@ -238,9 +238,116 @@ ensure_btop_theme() {
     "$colors" btop >"$dest"
 }
 
+ensure_claude_lease() {
+    # Лиза на тяжёлые прогоны (claude-lease): проводка того, что нельзя положить
+    # симлинком.
+    #
+    # Два куска машинного состояния. Первый — ёмкости: сколько тяжёлых прогонов
+    # эта машина выдерживает разом. Это инвентарь (см. README, «Инвентарь»): на
+    # ноутбуке с 4 ядрами один, на сборочной — сколько угодно, и публичной репе
+    # про это знать нечего. Заводим файл с разумным дефолтом, если его нет, и
+    # никогда не перезаписываем — дальше он живёт руками.
+    #
+    # Второй — хук в ~/.claude/settings.json. Симлинком его положить нельзя по
+    # той же причине, что ~/.bashrc: в этот файл пишет сам claude (тема, режимы,
+    # кэш окружения), и симлинк означал бы грязный git status и потерю его
+    # записей на checkout. Поэтому здесь — вмерживание своей записи в чужой
+    # файл, идемпотентное: существующая запись про claude-lease переписывается,
+    # остальное не трогается.
+    local lease="$HOME/.local/bin/claude-lease"
+    local capacity="$HOME/.claude/lease/capacity"
+
+    # Симлинки install.sh раскладывает раньше этого скрипта. Проверка — на
+    # случай запуска update руками из репы, когда установки ещё не было.
+    [[ -x "$lease" ]] || { echo "  ⚠️  claude-lease: нет $lease, проводка пропущена"; return 0; }
+
+    if [[ ! -f "$capacity" ]]; then
+        mkdir -p "$(dirname "$capacity")"
+        cat > "$capacity" <<'CAP'
+# Ёмкости ЭТОЙ машины: сколько тяжёлых прогонов она выдерживает разом.
+# Файл машинный — в dotfiles его нет и быть не должно, правится руками.
+#
+# Формат: <ресурс>=<слотов>. Ресурса нет в файле — он не ограничивается вообще.
+# Что именно берётся под лизу, решает манифест проекта (.claude/leases.json).
+#
+# машина=1 — мутационный гейт, e2e, сборка бинарника и бенчи идут строго по
+# одному: двое разом голодают по CPU и дают флаки с OOM вместо результата.
+# Разрешить один параллельный прогон — поставить 2. Снять ограничение —
+# закомментировать строку.
+машина=1
+CAP
+        echo "  ✅ claude-lease: ёмкости заведены — $capacity (правь под машину)"
+    fi
+
+    command -v node >/dev/null 2>&1 || { echo "  ⚠️  claude-lease: нет node, хук не прописан"; return 0; }
+
+    node - "$HOME/.claude/settings.json" <<'JS'
+const { existsSync, mkdirSync, readFileSync, writeFileSync } = require("node:fs");
+const path = require("node:path");
+
+const file = process.argv[2];
+const GUARD = "$HOME/.local/lib/claude-lease/guard";
+const PERMISSION = "Bash(claude-lease *)";
+
+let settings = {};
+if (existsSync(file)) {
+    try {
+        settings = JSON.parse(readFileSync(file, "utf8"));
+    } catch {
+        // Чужой файл сломан не нами — молча перезаписывать его настройки нельзя.
+        console.log("  ⚠️  claude-lease: " + file + " не парсится, хук не прописан");
+        process.exit(0);
+    }
+}
+
+const changes = [];
+
+settings.permissions ??= {};
+settings.permissions.allow ??= [];
+if (!settings.permissions.allow.includes(PERMISSION)) {
+    settings.permissions.allow.push(PERMISSION);
+    changes.push("разрешение " + PERMISSION);
+}
+
+settings.hooks ??= {};
+settings.hooks.PreToolUse ??= [];
+const entry = {
+    matcher: "Bash",
+    hooks: [
+        {
+            type: "command",
+            command: GUARD,
+            timeout: 10,
+            statusMessage: "Проверяю лизу на тяжёлый прогон",
+        },
+    ],
+};
+// Свои записи ищем по упоминанию лизы в команде и заменяем ВСЕ найденные на
+// одну актуальную. Иначе переезд файла между версиями dotfiles оставляет вторую,
+// устаревшую запись, а хук с исчезнувшим путём — это ошибка на каждом вызове Bash.
+const isMine = (e) =>
+    (e.hooks ?? []).some((h) => /claude-lease|lease-guard/.test(String(h.command ?? "")));
+const mine = settings.hooks.PreToolUse.filter(isMine);
+const ok = mine.length === 1 && JSON.stringify(mine[0]) === JSON.stringify(entry);
+if (!ok) {
+    settings.hooks.PreToolUse = [...settings.hooks.PreToolUse.filter((e) => !isMine(e)), entry];
+    changes.push(mine.length ? "хук PreToolUse/Bash (обновлён)" : "хук PreToolUse/Bash");
+}
+
+if (changes.length) {
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(settings, null, 2) + "\n");
+    console.log("  ✅ claude-lease: в settings.json дописано — " + changes.join(", "));
+} else {
+    console.log("  ✅ claude-lease: хук и разрешение на месте");
+}
+JS
+}
+
 install_starship
 install_fzf
 install_blesh
 install_kitten
 ensure_clip_spool
 ensure_btop_theme
+ensure_claude_lease

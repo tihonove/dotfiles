@@ -1,0 +1,76 @@
+#!/usr/bin/env node
+/**
+ * Сопоставление команды с манифестом проекта: ЧТО брать под лизу решает
+ * репозиторий (`.claude/leases.json`, лежит в его гите), СКОЛЬКО чего есть —
+ * машина (`~/.claude/lease/capacity`). Этот файл ни того, ни другого не знает:
+ * он только читает манифест и отвечает, попала ли команда под лизу.
+ *
+ *   match resource "<команда>"   → имя ресурса или пусто
+ *   match explain  "<команда>"   → "ресурс\tпричина" или пусто
+ *
+ * Нет манифеста, битый JSON, ничего не совпало — пустой вывод и код 0: молчание
+ * здесь означает «лиза не нужна». Сломанная механика не должна останавливать работу.
+ *
+ * CommonJS и без расширения намеренно: файл лежит в ~/.local/lib как обычная
+ * программа, а extensionless-файл с `import` node считает CommonJS и падает.
+ */
+"use strict";
+const { existsSync, readFileSync } = require("node:fs");
+const path = require("node:path");
+
+const norm = (s) => String(s).replace(/\s+/g, " ").trim();
+
+const [mode = "resource", ...rest] = process.argv.slice(2);
+const raw = rest.join(" ");
+const cmd = norm(raw);
+if (!cmd) process.exit(0);
+
+/**
+ * Совпадение ищем только в той части строки, которая действительно команда.
+ * Тело heredoc'а и содержимое кавычек — данные: `cat > doc.md <<EOF ... npm run
+ * test:mutation ... EOF` пишет документацию, а не гоняет Stryker. Зато
+ * `timeout 600 npm run test:mutation` и `cd x && ENV=1 npm run test:e2e` остаются
+ * видны — оборачивание в timeout/nice/переменные не должно прятать прогон.
+ *
+ * Резать обязательно по СЫРОЙ строке, до сжатия пробелов: иначе `^`/`$` в теле
+ * heredoc'а не за что зацепить, и вырезание молча не срабатывает.
+ */
+const codeOnly = norm(
+    raw
+        .replace(/<<-?\s*(['"]?)(\w+)\1[\s\S]*?^\s*\2\s*$/gm, " ")
+        .replace(/'[^']*'/g, " ")
+        .replace(/"(?:[^"\\]|\\.)*"/g, " "),
+);
+
+function findManifest(startDir) {
+    let dir = path.resolve(startDir);
+    for (;;) {
+        const candidate = path.join(dir, ".claude", "leases.json");
+        if (existsSync(candidate)) return candidate;
+        const parent = path.dirname(dir);
+        if (parent === dir) return undefined;
+        dir = parent;
+    }
+}
+
+// Сначала cwd: сеанс может работать в worktree, а CLAUDE_PROJECT_DIR смотреть в основное дерево.
+const manifestPath =
+    findManifest(process.cwd()) ??
+    (process.env.CLAUDE_PROJECT_DIR ? findManifest(process.env.CLAUDE_PROJECT_DIR) : undefined);
+if (!manifestPath) process.exit(0);
+
+let manifest;
+try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+} catch {
+    process.exit(0);
+}
+
+for (const lease of manifest.leases ?? []) {
+    if ((lease.except ?? []).some((e) => cmd.includes(norm(e)))) continue;
+    if (!(lease.match ?? []).some((m) => codeOnly.includes(norm(m)))) continue;
+    const resource = norm(lease.resource ?? "");
+    if (!resource) continue;
+    process.stdout.write(mode === "explain" ? `${resource}\t${norm(lease.why ?? "")}` : resource);
+    process.exit(0);
+}
