@@ -63,6 +63,26 @@ fi
 
 devsy provider use ssh
 
+# --- Провайдер ssh-ivm: вторая машина, необязательная ---
+#
+# Провайдер ssh с --single-machine смотрит ровно на один хост, поэтому под
+# вторую машину — отдельный экземпляр того же провайдера. По умолчанию он не
+# становится: машина берётся явно, `devsy ws up ... --provider ssh-ivm`.
+
+if [[ -n "${DEVSY_IVM_HOST:-}" ]]; then
+    ivm_options=("${ssh_options[@]}")
+    ivm_options[1]=HOST="$DEVSY_IVM_HOST"
+    ivm_options[3]=PORT=22
+    # add с --use=false только регистрирует провайдера, опции молча
+    # выбрасывает (devsy 1.19) — поэтому set отдельно и всегда.
+    if ! devsy provider list --result-format json -q | grep -q '"ssh-ivm"'; then
+        echo "Добавляю провайдер ssh-ivm..."
+        devsy provider add ssh --name ssh-ivm --use=false
+    fi
+    echo "Выставляю опции ssh-ivm..."
+    devsy provider set ssh-ivm --single-machine "${ivm_options[@]}"
+fi
+
 # IDE по умолчанию не навязываем: подключение — vscode/ssh по месту
 devsy ide use none
 
