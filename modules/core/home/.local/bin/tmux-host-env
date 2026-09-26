@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Найти tmux, в котором на самом деле сидит человек, и выдать его окружение:
+#
+#   tmux-host-env tmux new-window ...   # выполнить команду с этим окружением
+#   eval "$(tmux-host-env)"             # или выставить его в текущий shell
+#
+# Зачем. Скрипты и скилы, которые что-то открывают рядом с сессией claude
+# (diode-here, /tmux-continue), опираются на $TMUX_PANE — «панель, где я».
+# Сессия, запущенная из `claude agents`, живёт не в панели tmux, а в pty у
+# демона агентов: её предки — `claude bg-pty-host` → `claude daemon run`, до
+# tmux-сервера цепочка не доходит, и $TMUX пуст. Человек же смотрит на неё из
+# панели, где запущен `claude agents` — туда и надо открывать.
+#
+# Как находим, по убыванию надёжности:
+#
+#   1. $TMUX уже есть — обычный запуск в панели, печатаем как есть.
+#   2. Идём по предкам. У кого в environ есть TMUX — тот и ответ. Встретили
+#      `claude daemon run ... --spawned-by {"pid":N,...}` — прыгаем к N (это
+#      `claude agents`, поднявший демон) и продолжаем от него. Так находится
+#      именно ТА панель, из которой запущена эта сессия, даже если `claude
+#      agents` открыт в нескольких.
+#   3. Демон не транзиентный (spawned-by нет или тот процесс уже умер) — берём
+#      `claude agents` среди живых процессов, если он в tmux ровно один. Их
+#      несколько — угадывать не будем, отказ.
+#
+# С аргументами — exec команды с выставленными TMUX/TMUX_PANE (форма для
+# скилов: `eval "$(...)"` агентские песочницы режут как непроверяемое). Без
+# аргументов — `export ...` на stdout. Не нашли — сообщение в stderr и код 1,
+# команда не запускается.
+
+set -uo pipefail
+
+found() {
+    if (( $# > 2 )); then
+        export TMUX=$1 TMUX_PANE=$2
+        shift 2
+        exec "$@"
+    fi
+    printf 'export TMUX=%q TMUX_PANE=%q\n' "$1" "$2"
+    exit 0
+}
+
+if [[ -n ${TMUX:-} && -n ${TMUX_PANE:-} ]]; then
+    found "$TMUX" "$TMUX_PANE" "$@"
+fi
+
+# TMUX и TMUX_PANE из environ процесса в виде «TMUX<таб>TMUX_PANE»; код 1,
+# если их там нет.
+tmux_env_of() {
+    [[ -r /proc/$1/environ ]] || return 1
+    local tmux='' pane='' kv
+    while IFS= read -r -d '' kv; do
+        case $kv in
+            TMUX=*)      tmux=${kv#TMUX=} ;;
+            TMUX_PANE=*) pane=${kv#TMUX_PANE=} ;;
+        esac
+    done < "/proc/$1/environ"
+    [[ -n $tmux && -n $pane ]] || return 1
+    printf '%s\t%s\n' "$tmux" "$pane"
+}
+
+# pid из `--spawned-by {"pid":N}` в cmdline демона агентов.
+spawned_by_of() {
+    tr '\0' '\n' < "/proc/$1/cmdline" 2>/dev/null \
+        | grep -A1 -x -- '--spawned-by' | tail -n1 \
+        | grep -o '"pid": *[0-9]*' | grep -o '[0-9]*$'
+}
+
+pid=$PPID
+while [[ -n $pid && $pid -gt 1 ]]; do
+    if env=$(tmux_env_of "$pid"); then
+        found "${env%%$'\t'*}" "${env#*$'\t'}" "$@"
+    fi
+    if next=$(spawned_by_of "$pid") && [[ -n $next && -d /proc/$next ]]; then
+        pid=$next
+        continue
+    fi
+    pid=$(awk '/^PPid:/ { print $2 }' "/proc/$pid/status" 2>/dev/null)
+done
+
+candidates=()
+for p in $(pgrep -u "$(id -u)" -x claude); do
+    [[ $(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null) == claude\ agents* ]] || continue
+    env=$(tmux_env_of "$p") && candidates+=("$env")
+done
+if (( ${#candidates[@]} == 1 )); then
+    env=${candidates[0]}
+    found "${env%%$'\t'*}" "${env#*$'\t'}" "$@"
+fi
+
+echo "tmux-host-env: не нашёл tmux-панель этой сессии" >&2
+exit 1

@@ -30,6 +30,13 @@ dir=$(realpath -- "${1:-.}")
 [[ -d $dir ]] || { echo "diode-here: нет каталога $dir" >&2; exit 1; }
 
 if [[ -z ${TMUX:-} || -z ${TMUX_PANE:-} ]]; then
+    # Сессия из `claude agents` сидит в pty демона, а не в панели: tmux-host-env
+    # найдёт панель, где открыт `claude agents`, — туда diode и встанет.
+    # DIODE_HERE_REEXEC — от бесконечного цикла, если панель найдена, а
+    # окружение почему-то не доехало.
+    if [[ -z ${DIODE_HERE_REEXEC:-} ]] && tmux-host-env >/dev/null 2>&1; then
+        DIODE_HERE_REEXEC=1 exec tmux-host-env "$0" "$dir"
+    fi
     # Живой терминал без tmux — просто редактор. Не терминал (агент, пайп) —
     # TUI повиснет намертво, лучше сразу отказ.
     [[ -t 0 && -t 1 ]] || { echo "diode-here: не в tmux и не в терминале" >&2; exit 1; }
