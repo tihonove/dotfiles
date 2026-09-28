@@ -40,7 +40,7 @@ Payload разложен по модулям, чтобы база вставал
 | `sway` | сессия целиком: sway, waybar, wofi, kanshi, тема, мониторы, история буфера | `sway waybar wofi kanshi wtype cliphist jq` |
 | `devsy` | `~/.ssh/config` + установка CLI, настройка ssh-провайдера, скилы Клода про воркспейсы | — |
 | `diode` | `core.editor` для git, `diode-here` и скил Клода «открыть в diode»; сам редактор — из apt | `diode` |
-| `claude` | скилы Клода общего назначения: `uncommit` — коммиты ветки → правки в рабочей копии для ревью | — |
+| `claude` | скилы Клода общего назначения: `uncommit` — коммиты ветки → правки в рабочей копии для ревью; `tsunami-ui` — дев-сервер фронта Tsunami из любого worktree nebo | — |
 
 Цель симлинка считается от пути **внутри `home/`**, а не от имени модуля.
 Поэтому файл можно двигать между модулями свободно: в `~` ничего не появляется
@@ -1327,9 +1327,26 @@ devsy метит комментариями `# Devsy Start/End` и снимае�
 скилы (симлинки в другие репы, локальные) не трогаются.
 
 ```
-.claude/skills/uncommit/SKILL.md      # инструкция агенту
-.claude/skills/uncommit/uncommit.sh   # вся механика
+.claude/skills/uncommit/SKILL.md          # инструкция агенту
+.claude/skills/uncommit/uncommit.sh       # вся механика
+.claude/skills/tsunami-ui/SKILL.md
+.claude/skills/tsunami-ui/tsunami-ui.sh   # он же ~/bin/tsunami-ui (симлинк, руками)
 ```
+
+### tsunami-ui
+
+Поднимает дев-сервер фронта Tsunami (`ui/gold/applications/tsunami` в nebo) из
+любого worktree в новой tmux-панели, чтобы смотреть ветку задачи, не
+переключая основной чекаут. Фронт на машине всегда один: предыдущий гасится.
+
+```sh
+tsunami-ui [--gen] [--window] [DIR]   # → https://local.tsunami.nebius.dev
+```
+
+Что он делает сверх `fdk_start.sh`: `fdk generate`, если в worktree его ещё не
+было (или по `--gen`), с npc-логином **до** него — внутри TUI fdk ссылка на
+логин не видна; `setcap cap_net_bind_service` на node этого worktree (у
+каждого свой bazel output base), чтобы слушать 443.
 
 ### uncommit
 
