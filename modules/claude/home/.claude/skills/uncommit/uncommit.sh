@@ -67,10 +67,11 @@ g() { git -C "$1" "${@:2}"; }
 # Путь worktree, в котором выписана ветка; пусто — ни в одном.
 worktree_of_branch() {
     g "$1" worktree list --porcelain | awk -v b="refs/heads/$2" '
-        /^worktree /{wt=substr($0,10)} /^branch /{if ($2==b){print wt; exit}}'
+        /^worktree /{wt=substr($0,10)} /^branch /{if ($2==b && !found){print wt; found=1}}'
 }
 
-main_worktree() { g "$1" worktree list --porcelain | awk '/^worktree /{print substr($0,10); exit}'; }
+# awk дочитывает до конца: ранний exit рвёт pipe, и под pipefail скрипт молча падает с 141 на длинном списке worktree.
+main_worktree() { g "$1" worktree list --porcelain | awk '/^worktree / && !found {print substr($0,10); found=1}'; }
 
 dirty() { [[ -n "$(g "$1" status --porcelain --untracked-files=no)" ]]; }
 
