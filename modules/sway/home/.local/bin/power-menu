@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Меню питания: кнопка питания ноута (XF86PowerOff в sway) и клик по ⏻ в waybar.
+#
+# Своё меню на wofi, а не встроенное у waybar ("menu" + menu-file у custom-
+# модуля): оно появилось в waybar 0.11, а в Ubuntu 24.04 стоит 0.9.24 — там
+# ключ молча игнорируется, и клик по ⏻ не делал ничего. Заодно одно меню на оба
+# входа, а не два расходящихся списка.
+#
+# Кнопку питания sway получает только потому, что logind её отпускает: иначе он
+# по умолчанию (HandlePowerKey=poweroff) сразу гасит машину. Отпускает, пока
+# кто-то держит блокировку handle-power-key, — её держит `power-menu inhibit`,
+# запущенный из sway/config.
+#
+# Блокировка живёт ровно столько, сколько sway: под ней висит не `sleep
+# infinity`, а `swaymsg -t subscribe` на событие shutdown. Выйдешь из sway — он
+# вернётся, блокировка снимется, и на экране входа GDM кнопка снова работает
+# по-системному. Через logind.conf (HandlePowerKey=ignore) было бы проще, но
+# тогда кнопка мертва везде, где нет этого меню.
+#
+# Блокировка — через loginctl lock-session, как Ctrl+Alt+q: один путь через
+# swayidle, честный LockedHint (см. раздел «Блокировка экрана» в sway/config).
+# Перед сном блокирует сам swayidle по before-sleep, здесь это не нужно.
+#
+# Использование:
+#   power-menu           — показать меню (повторный вызов закрывает его)
+#   power-menu inhibit   — держать кнопку питания за sway до выхода из sway
+
+set -euo pipefail
+
+readonly WOFI_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/wofi/power-menu.conf"
+
+if [[ ${1:-} == inhibit ]]; then
+    exec systemd-inhibit --what=handle-power-key --mode=block \
+        --who=sway --why='Кнопка питания открывает меню power-menu' \
+        swaymsg -t subscribe '["shutdown"]'
+fi
+
+# Повторное нажатие закрывает открытое меню, а не поднимает второе рядом.
+if pkill -x -f "wofi --dmenu --conf $WOFI_CONF" 2>/dev/null; then
+    exit 0
+fi
+
+choice=$(printf '%s\n' \
+    'Сон' \
+    'Заблокировать' \
+    'Выключить' \
+    'Перезагрузить' \
+    'Выйти из sway' \
+    | wofi --dmenu --conf "$WOFI_CONF") || exit 0
+
+case "$choice" in
+    'Сон')           systemctl suspend ;;
+    'Заблокировать') loginctl lock-session ;;
+    'Выключить')     systemctl poweroff ;;
+    'Перезагрузить') systemctl reboot ;;
+    'Выйти из sway') swaymsg exit ;;
+esac

@@ -246,17 +246,12 @@
         "signal": 8
     },
 
-    // Меню выключения по клику. XML лежит в пакете waybar, не в репе.
+    // Меню выключения по клику — то же, что по кнопке питания ноута. Встроенное
+    // "menu" у custom-модулей есть только с waybar 0.11, в Ubuntu 24.04 стоит
+    // 0.9.24, и там клик не делал ничего; см. ~/.local/bin/power-menu.
     "custom/power": {
         "format": "⏻ ",
         "tooltip": false,
-        "menu": "on-click",
-        "menu-file": "/usr/share/waybar/custom_modules/power_menu.xml",
-        "menu-actions": {
-            "shutdown": "systemctl poweroff",
-            "reboot": "systemctl reboot",
-            "suspend": "systemctl suspend",
-            "hibernate": "systemctl hibernate"
-        }
+        "on-click": "$HOME/.local/bin/power-menu"
     }
 }

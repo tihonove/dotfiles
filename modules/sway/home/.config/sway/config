@@ -408,6 +408,15 @@ bindsym --to-code Ctrl+Alt+q exec loginctl lock-session
 bindswitch --locked lid:on  exec ~/.local/bin/idle-guard lid-close
 bindswitch --locked lid:off exec ~/.local/bin/idle-guard lid-open
 
+### Кнопка питания
+# Короткое нажатие — меню (сон, блокировка, выключение…), то же, что по клику
+# на ⏻ в waybar. Чтобы logind не гасил машину сам, power-menu inhibit держит
+# у него блокировку handle-power-key до выхода из sway; разбор — в скрипте.
+# Без --locked: поверх swaylock wofi всё равно не виден, а долгое нажатие
+# (~4 с) гасит машину прошивкой в любом случае.
+exec $HOME/.local/bin/power-menu inhibit
+bindsym XF86PowerOff exec power-menu
+
 # Не перенесено из старого конфига — нужен пакет, которого не ставили:
 #   MRU-переключение окон — демон, помнящий историю фокуса. $mod+Tab ходит
 #   по окнам в порядке раскладки (window-cycle, раздел «Фокус»); MRU к нему
