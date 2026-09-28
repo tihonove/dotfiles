@@ -613,7 +613,9 @@ curl -fsSL https://raw.githubusercontent.com/diode-editor/diode/main/install.sh 
 - **sway** — база (раскладки, тачпад, тема, автозапуск панели), биндов почти нет.
   Навигация трёхуровневая: `$mod+Ctrl+h/l` — столы, `$mod+h/l` — окна и табы
   sway, `$mod+Alt+h/l` — вкладки внутри окна (Chrome, окна tmux), скрипт
-  `.local/bin/content-tab`. На каждом уровне `Enter` создаёт новое: `$mod+Enter`
+  `.local/bin/content-tab`. На всех трёх уровнях вместо `h/l` работают `←/→` с
+  тем же модификатором, а бинды через `--to-code` матчат физическую клавишу и
+  от раскладки не зависят. На каждом уровне `Enter` создаёт новое: `$mod+Enter`
   — окно, `$mod+Alt+Enter` — вкладка внутри окна (тот же `content-tab`),
   `$mod+Ctrl+Enter` — пустой стол (`.local/bin/workspace-new`). Подробности — в
   разделе «tmux», ниже. `Alt+ЛКМ` тащит окно мышью: бросил у края другого
@@ -700,7 +702,8 @@ ble-import -d integration/fzf-key-bindings
 ## tmux
 
 Конфиг перенесён из `~/dotfiles-old/.tmux.conf` целиком: prefix `C-s`, лейауты с
-`main-vertical` по умолчанию, дубли всех дефолтных биндов на русскую раскладку,
+`main-vertical` по умолчанию, дубли всех дефолтных биндов (prefix и copy-mode)
+на русскую раскладку,
 двухстрочный статус сверху с кликабельным меню-баром (Sessions / Windows /
 Panes / System) и тема catppuccin mocha.
 
@@ -779,6 +782,8 @@ kitty — окно tmux. `Enter` вообще создаёт на каждом �
 | столы     | `$mod+Ctrl+h/l` | `$mod+Ctrl+Enter` |
 | окна sway | `$mod+h/l`      | `$mod+Enter`      |
 | вкладки   | `$mod+Alt+h/l`  | `$mod+Alt+Enter`  |
+
+`h/l` в каждой строке дублируются `←/→` с тем же модификатором.
 
 Здесь, в отличие от перехода, одной универсальной комбинации нет. «Новый таб» в
 GUI — это `Ctrl+T`: его понимают Chrome, Firefox, VS Code, GTK. Но в шелле `C-t`

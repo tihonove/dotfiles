@@ -116,7 +116,7 @@ focus_on_window_activation focus
 # Прыгнуть на окно, которое просит внимания. Нужен как раз при `urgent`/`smart`,
 # но полезен и так — например, если уведомление уже уползло из виду. Более
 # точный способ вернуться к уведомлению — $mod+n, см. раздел «Уведомления».
-bindsym $mod+x [urgent=latest] focus
+bindsym --to-code $mod+x [urgent=latest] focus
 
 ### Автозапуск
 # Прокинуть переменные сессии в dbus/systemd — нужно панели и порталам.
@@ -240,9 +240,12 @@ bindsym --to-code $mod+Shift+6 move container to workspace number 6
 bindsym --to-code $mod+Shift+7 move container to workspace number 7
 bindsym --to-code $mod+Shift+8 move container to workspace number 8
 bindsym --to-code $mod+Shift+9 move container to workspace number 9
-# Переход между столами: предыдущий / следующий
-bindsym --to-code $mod+Ctrl+h workspace prev
-bindsym --to-code $mod+Ctrl+l workspace next
+# Переход между столами: предыдущий / следующий. Стрелки — дубль h/l, как у
+# фокуса и перемещения окон выше: на каждом уровне навигации h/l и ←/→ равноправны.
+bindsym --to-code $mod+Ctrl+h     workspace prev
+bindsym --to-code $mod+Ctrl+l     workspace next
+bindsym --to-code $mod+Ctrl+Left  workspace prev
+bindsym --to-code $mod+Ctrl+Right workspace next
 # Увезти текущий стол на соседний монитор: PgUp — влево, PgDn — вправо.
 # С крайнего монитора стол уезжает на противоположный (left/right заворачивают).
 bindsym --to-code $mod+Ctrl+Prior move workspace to output left
@@ -285,8 +288,10 @@ bindsym --to-code $mod+grave exec sway-overview
 # окна и табы sway, Alt — то, что внутри окна. Скрипт не разбирает, кто в
 # фокусе: он синтезирует Ctrl+PageUp/PageDown, а это общая комбинация
 # переключения вкладок — почему так, расписано в самом content-tab.
-bindsym --to-code $mod+Mod1+h exec content-tab prev
-bindsym --to-code $mod+Mod1+l exec content-tab next
+bindsym --to-code $mod+Mod1+h     exec content-tab prev
+bindsym --to-code $mod+Mod1+l     exec content-tab next
+bindsym --to-code $mod+Mod1+Left  exec content-tab prev
+bindsym --to-code $mod+Mod1+Right exec content-tab next
 # Новая вкладка на этом же уровне. Enter «создаёт» на всех трёх уровнях, а какой
 # именно — говорит модификатор:
 #
@@ -294,6 +299,10 @@ bindsym --to-code $mod+Mod1+l exec content-tab next
 #   столы      $mod+Ctrl+h/l   $mod+Ctrl+Enter   (workspace-new, ниже)
 #   окна sway  $mod+h/l        $mod+Enter        (терминал, см. «Клавиши — запуск»)
 #   вкладки    $mod+Alt+h/l    $mod+Alt+Enter
+#
+# h/l на каждом уровне дублируются стрелками ←/→ с тем же модификатором, а
+# --to-code во всех биндах матчит физическую клавишу — в русской раскладке
+# всё работает без переключения языка.
 #
 # Вот здесь content-tab всё же смотрит, кто в фокусе, — ровно одной развилкой
 # «терминал или нет»: универсальный «новый таб» Ctrl+T в шелле занят виджетом
