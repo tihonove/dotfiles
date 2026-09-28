@@ -49,11 +49,13 @@ if [[ -f "$PROFILE" ]] && grep -qxF vexx "$PROFILE"; then
 fi
 
 # 2. Прежний бинарник. Убираем ТОЛЬКО когда новый уже на месте: иначе на машине
-#    без сети (или до того, как отработает modules/diode/update) человек
-#    остаётся вообще без редактора, а `git commit` без -m — без core.editor.
-#    Поэтому на машине, где vexx ещё стоит, а diode нет, чистка приходится на
-#    следующий запуск install.sh — новый бинарник к тому моменту уже стоит.
-if [[ -e "$BIN_DIR/vexx" && -x "$BIN_DIR/diode" ]]; then
+#    без сети (или пока diode ещё не поставлен) человек остаётся вообще без
+#    редактора, а `git commit` без -m — без core.editor. Поэтому на машине, где
+#    vexx ещё стоит, а diode нет, чистка приходится на следующий запуск
+#    install.sh — новый к тому моменту уже стоит.
+#    Ищем по PATH, а не в ~/.local/bin: с 2026-09 diode ставится из apt и лежит
+#    в /usr/bin (см. 0002-diode-from-apt).
+if [[ -e "$BIN_DIR/vexx" ]] && command -v diode >/dev/null 2>&1; then
     if ((DRY_RUN)); then
         echo "убрал бы ~/.local/bin/vexx (diode на месте)"
     else

@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# 2026-09-27. diode больше не ставится скриптом modules/diode/update из nightly-
+# релиза — его ставит apt из репы апстрима, и версии приезжают сами. Скрипт из
+# репы ушёл коммитом, а на машине остался бинарник ~/.local/bin/diode, до
+# которого коммит не дотягивается. Он не просто мусор: ~/.local/bin в PATH стоит
+# раньше /usr/bin, так что старый nightly ЗАСЛОНЯЕТ пакетный diode, и «поставил
+# из apt» на деле ничего не меняет.
+#
+# Контракт миграции — см. «Миграции» в install.sh: срабатывает по состоянию,
+# идемпотентна, при DOTFILES_DRY_RUN=1 только рассказывает. Молчит, когда чинить
+# нечего, — то есть на свежей машине и на любом повторном запуске.
+#
+# Два состояния, в которых есть что сказать:
+#
+#   пакетный diode уже стоит   — старый бинарник убирается, иначе он победит в PATH;
+#   пакетного ещё нет           — старый НЕ трогаем (машина осталась бы без
+#                                 редактора и без core.editor), но напоминаем,
+#                                 что он больше не обновляется и как поставить
+#                                 из apt. Сам apt требует sudo, а dotfiles без
+#                                 sudo принципиально — дальше подсказки не идём.
+#
+# Умрёт своей смертью, когда на всех машинах diode будет из пакета.
+
+set -euo pipefail
+
+HOME_DIR="${DOTFILES_HOME:-$HOME}"
+DRY_RUN="${DOTFILES_DRY_RUN:-0}"
+
+BIN_DIR="$HOME_DIR/.local/bin"
+old="$BIN_DIR/diode"
+
+[[ -x "$old" ]] || exit 0
+
+# diode где-нибудь ещё в PATH, кроме ~/.local/bin, — это и есть пакетный.
+# PATH фильтруется, а не проверяется /usr/bin напрямую: пакет мог лечь и в
+# /usr/local/bin, и в /opt — важно лишь, что кто-то подхватит команду после
+# удаления нашего.
+rest_path=$(tr ':' '\n' <<<"$PATH" | grep -vxF "$BIN_DIR" | paste -sd: -)
+packaged=$(PATH="$rest_path" command -v diode 2>/dev/null || true)
+
+if [[ -n "$packaged" ]]; then
+    if ((DRY_RUN)); then
+        echo "убрал бы ~/.local/bin/diode: он заслоняет $packaged"
+    else
+        rm -f -- "$old"
+        echo "убран ~/.local/bin/diode — заслонял $packaged"
+    fi
+else
+    cat <<MSG
+~/.local/bin/diode ($("$old" --version 2>/dev/null || echo 'версия неизвестна')) больше не обновляется — редактор теперь ставится из apt, репу заводит установщик апстрима (sudo спросит сам):
+    curl -fsSL https://raw.githubusercontent.com/diode-editor/diode/main/install.sh | sh -s -- --method=apt
+  Старый бинарник уберётся на следующем ./update.sh, когда пакетный встанет.
+MSG
+fi
