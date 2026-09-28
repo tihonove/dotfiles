@@ -1437,6 +1437,12 @@ sudo apt install --no-install-recommends cliphist
 # requires у sway, как и cliphist.
 sudo apt install --no-install-recommends jq
 
+# Агент polkit — окно пароля для GUI-программ, которым нужны права. В GNOME его
+# держит gnome-shell, в sway его нет. Запускается из sway/config по exec.
+# playerctl — клавиши Play/Next/Prev через MPRIS. Оба не в requires: без них
+# сессия работает, просто эти две вещи молчат.
+sudo apt install --no-install-recommends policykit-1-gnome playerctl
+
 # fzf ставит modules/core/update — бинарником в ~/.local/bin, без sudo и
 # свежее пакетного. Пакет тоже годится и, если он уже стоит, установщик его
 # не трогает; ставить специально незачем (см. «fzf»).

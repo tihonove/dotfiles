@@ -137,6 +137,11 @@ bindsym --to-code $mod+x [urgent=latest] focus
 #
 # idle-guard — той же цепочкой и по той же причине, что dunst: простой,
 # гашение, блокировка и сон (см. ~/.local/bin/idle-guard).
+# Агент polkit: окно пароля, когда GUI-программе нужны права (обновления,
+# монтирование, настройки сети). В GNOME его держит gnome-shell, в sway его
+# нет вовсе — без агента такие действия молча отказывают. exec, не
+# exec_always: агент регистрируется на сессию один раз, второй получил бы отказ.
+exec /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
 exec_always sh -c 'dbus-update-activation-environment --systemd WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP=sway XCURSOR_THEME XCURSOR_SIZE; systemctl --user start dunst.service; exec systemctl --user start idle-guard.service'
 # Светлая/тёмная тема + панель, одной цепочкой.
 #
@@ -363,6 +368,15 @@ floating_modifier Mod1 normal
 bindsym --locked XF86AudioRaiseVolume exec pactl set-sink-volume @DEFAULT_SINK@ +5%
 bindsym --locked XF86AudioLowerVolume exec pactl set-sink-volume @DEFAULT_SINK@ -5%
 bindsym --locked XF86AudioMute        exec pactl set-sink-mute   @DEFAULT_SINK@ toggle
+# Микрофон: F4 на ThinkPad. Светодиод на клавише ядро зажигает само по
+# состоянию захвата, отдельно его трогать не нужно.
+bindsym --locked XF86AudioMicMute     exec pactl set-source-mute @DEFAULT_SOURCE@ toggle
+# Плеер — через MPRIS (playerctl): Chrome, Telegram, Spotify отвечают на него
+# без настройки. Клавиши есть на Keychron (Fn-слой), у ноута их нет.
+bindsym --locked XF86AudioPlay  exec playerctl play-pause
+bindsym --locked XF86AudioPause exec playerctl play-pause
+bindsym --locked XF86AudioNext  exec playerctl next
+bindsym --locked XF86AudioPrev  exec playerctl previous
 # Яркость. --locked: работает и на заблокированном экране.
 bindsym --locked XF86MonBrightnessUp   exec brightnessctl set 5%+
 bindsym --locked XF86MonBrightnessDown exec brightnessctl set 5%-
