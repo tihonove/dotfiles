@@ -1428,6 +1428,13 @@ sudo apt install --no-install-recommends brightnessctl
 sudo install -m 644 system/90-backlight.rules /etc/udev/rules.d/
 sudo udevadm control --reload && sudo udevadm trigger -s backlight -c add
 sudo usermod -aG video "$USER"   # применяется после релогина
+
+# хук apt для индикатора обновлений в waybar (custom/updates): после apt update
+# и после dpkg шлёт панели SIGRTMIN+9, модуль перечитывает
+# /var/lib/update-notifier/updates-available. Имя 99zz — чтобы стоять ПОСЛЕ
+# штатного 99update-notifier, который этот файл и пишет. Сам модуль ничего
+# не опрашивает: списки качает apt-daily.timer, раз в сутки и от розетки.
+sudo install -m 644 system/99zz-waybar-updates /etc/apt/apt.conf.d/
 ```
 
 ### tailscale

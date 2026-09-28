@@ -1,0 +1,7 @@
+// Пинок панели waybar после apt: модуль custom/updates перечитывает
+// /var/lib/update-notifier/updates-available по SIGRTMIN+9.
+// Имя 99zz — чтобы стоять в конфиге ПОСЛЕ 99update-notifier: хуки
+// выполняются в порядке объявления, а файл должен быть уже переписан.
+// Копия в ~/.dotfiles/system/. Разбор: ~/.system-setup/updates-waybar-indicator.md
+APT::Update::Post-Invoke-Success {"pkill -RTMIN+9 -x waybar 2>/dev/null || true";};
+DPkg::Post-Invoke {"pkill -RTMIN+9 -x waybar 2>/dev/null || true";};

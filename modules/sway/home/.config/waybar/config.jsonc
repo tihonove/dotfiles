@@ -32,6 +32,7 @@
     // в пустоту, и ничего не двигает.
     "modules-right": [
         "tray",
+        "custom/updates",
         "idle_inhibitor",
         "pulseaudio",
         "custom/system",
@@ -113,6 +114,26 @@
     //
     // Всё считает ~/.local/bin/sys-status, там же пороги и разбор.
     //
+    // Обновления apt: значок с числом, пока есть что ставить; пусто — модуль
+    // скрыт. Стоит сразу за треем по той же логике: появляется и исчезает, а с
+    // края ничего не двигает.
+    //
+    // Ничего не проверяет и не опрашивается: читает файл, который Ubuntu пишет
+    // после каждого apt update / dpkg (update-notifier). interval "once" +
+    // signal 9 — перерисовка только по SIGRTMIN+9 из apt-хука
+    // /etc/apt/apt.conf.d/99zz-waybar-updates. Сами списки качает apt-daily.timer,
+    // раз в сутки и только от розетки. Разбор: ~/.system-setup/updates-waybar-indicator.md
+    //
+    // Клик — kitty с apt upgrade; хук после dpkg сам обновит значок.
+    "custom/updates": {
+        "format": "{}",
+        "return-type": "json",
+        "exec": "$HOME/.local/bin/updates-status",
+        "on-click": "kitty --single-instance --title 'apt upgrade' bash -c 'sudo apt update && sudo apt upgrade; echo; read -rp \"Enter — закрыть\"'",
+        "interval": "once",
+        "signal": 9
+    },
+
     // interval 3: столбик загрузки — это разница между двумя замерами /proc/stat,
     // то есть заодно и окно усреднения. Реже — индикатор врёт про короткие
     // всплески, чаще — незачем, на каждом тике форкается bash.

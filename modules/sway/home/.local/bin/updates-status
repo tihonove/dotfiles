@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Индикатор обновлений для waybar (custom/updates).
+#
+# Сам ничего не проверяет и в сеть не ходит. Читает готовый файл
+# /var/lib/update-notifier/updates-available — его Ubuntu пишет и так, после
+# каждого `apt update` и каждого прогона dpkg (хук /etc/apt/apt.conf.d/99update-notifier,
+# он же кормит MOTD «N updates can be applied»). Списки пакетов обновляет штатный
+# apt-daily.timer раз в сутки, и только от розетки — ConditionACPower=true стоит
+# у apt-daily.service из коробки. То есть «проверка» — это ночная работа Ubuntu,
+# а модуль лишь показывает её итог.
+#
+# В waybar модуль стоит с interval "once" + signal 9: скрипт запускается при
+# старте панели и по SIGRTMIN+9, который шлёт хук /etc/apt/apt.conf.d/99zz-waybar-updates
+# после apt update и после dpkg. Опроса по таймеру нет вовсе — на батарее это
+# ровно ноль работы. Разбор: ~/.system-setup/updates-waybar-indicator.md
+#
+# В панели — значок и число; список пакетов в тултипе. Когда обновлений нет и
+# перезагрузка не нужна, text пустой — waybar такой custom-модуль не рисует.
+#
+# apt list --upgradable ходит только в локальный кэш (~0.3 с) и вызывается лишь
+# по тем же поводам, что и сам скрипт, — можно не экономить.
+
+set -u
+
+readonly STATE=/var/lib/update-notifier/updates-available
+readonly REBOOT_FLAG=/var/run/reboot-required
+readonly ICON_UPDATE=$'\U000F06B0'   # nf-md-update
+readonly ICON_REBOOT=$'\U000F0709'   # nf-md-restart
+
+count=0
+if [[ -r $STATE ]]; then
+    count=$(sed -nE 's/^([0-9]+) updates? can be applied immediately\./\1/p' "$STATE")
+    count=${count:-0}
+fi
+reboot=0
+[[ -e $REBOOT_FLAG ]] && reboot=1
+
+if (( count == 0 && reboot == 0 )); then
+    jq -nc '{text: "", tooltip: "", class: "none"}'
+    exit 0
+fi
+
+if (( count > 0 )); then
+    text="$ICON_UPDATE $count"
+    class=pending
+    stamp=$(date -r "$STATE" '+%d.%m %H:%M' 2>/dev/null || echo '?')
+    tooltip="Обновлений: $count · списки от $stamp"
+    pkgs=$(apt list --upgradable 2>/dev/null | tail -n +2 | cut -d/ -f1)
+    [[ -n $pkgs ]] && tooltip+=$'\n\n'"$pkgs"
+else
+    text="$ICON_REBOOT"
+    class=reboot
+    tooltip=""
+fi
+
+if (( reboot )); then
+    class=reboot
+    tooltip+="${tooltip:+$'\n\n'}Требуется перезагрузка"
+fi
+
+jq -nc --arg t "$text" --arg tt "$tooltip" --arg c "$class" \
+    '{text: $t, tooltip: $tt, class: $c}'

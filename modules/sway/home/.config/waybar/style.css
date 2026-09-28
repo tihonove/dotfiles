@@ -97,6 +97,7 @@ button:hover {
 #idle_inhibitor,
 #scratchpad,
 #custom-theme,
+#custom-updates,
 #custom-power {
     padding: 0 10px;
     background-color: transparent;
@@ -152,7 +153,8 @@ button:hover {
    пересчитывает размер виджета и панель дёргается под курсором. */
 #pulseaudio,
 #custom-language,
-#custom-theme {
+#custom-theme,
+#custom-updates {
     margin: 3px 0;
     border-radius: 4px;
     transition: background-color .15s ease-in-out;
@@ -160,7 +162,8 @@ button:hover {
 
 #pulseaudio:hover,
 #custom-language:hover,
-#custom-theme:hover {
+#custom-theme:hover,
+#custom-updates:hover {
     background-color: @surface0;
     color: @text;
 }
@@ -188,6 +191,7 @@ button:hover {
 #custom-theme,
 #clock,
 #battery,
+#custom-updates,
 #custom-power            { color: @subtext0; }
 
 /* idle_inhibitor и немой звук — состояния, а не тревоги: отличаются яркостью
@@ -198,6 +202,10 @@ button:hover {
 #pulseaudio.muted         { color: @overlay0; }
 
 #network.disconnected    { color: @red; }
+
+/* Ждущие обновления — состояние, серое как всё. Нужная перезагрузка (новое
+   ядро уже стоит, а работает старое) — уже повод, поэтому жёлтая. */
+#custom-updates.reboot   { color: @yellow; }
 
 /* Цвета прямоугольника температуры тут НЕ задаются, хотя место напрашивается.
    Три символа датчиков — один лейбл, а CSS красит лейбл целиком; покрасить один
