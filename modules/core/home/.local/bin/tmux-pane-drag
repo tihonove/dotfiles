@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Докинг панели tmux мышью — режим drag, см. tmux.conf, раздел «Перетаскивание
+# панелей мышью». Бинды оттуда зовут:
+#
+#   tmux-pane-drag on|off|toggle <сессия>   включить/выключить режим
+#   tmux-pane-drag drop <панель> <зона>     положить несомую панель
+#   tmux-pane-drag to-window <сессия> <окно> унести несомую панель в окно
+#
+# Режим — сессионная опция key-table=drag плюс строка заголовков над панелями
+# (pane-border-status): в ней подсказка, что несём и куда встанет. Формат
+# заголовка лежит в tmux.conf опцией @drag_border_fmt, здесь он только
+# копируется в pane-border-format на время режима, чтобы вне режима заголовки
+# оставались дефолтными.
+#
+# drop: панель под курсором и зона отпускания приходят из бинда
+# MouseDragEnd1Pane (зона считается форматом @drag_zone_fmt, тем же, что
+# рисует подсказку, — так подсказка и результат не разойдутся). Несомая —
+# активная панель окна: MouseDown1Pane в режиме делает активной ту, на
+# которой нажали. Слева/справа — join-pane -h (с -b слева), сверху/снизу —
+# join-pane -v, середина — swap-pane. Отпустили на ней же — ничего.
+#
+# to-window: бросок на вкладку окна в статусе. Несомая — активная панель
+# текущего окна сессии; join-pane в окно кладёт её рядом с активной панелью
+# того окна, select-layout встраивает в его лейаут (как prefix g). Своё же
+# окно — ничего.
+
+set -euo pipefail
+
+usage() {
+    echo "usage: tmux-pane-drag on|off|toggle <session> | drop <target-pane> <zone>" >&2
+    exit 2
+}
+
+mode_on() {
+    tmux set -t "$1" key-table drag \; \
+         set -g pane-border-status top \; \
+         set -g pane-border-format "$(tmux show -gv @drag_border_fmt)"
+}
+
+mode_off() {
+    tmux set -t "$1" -u key-table \; \
+         set -gu pane-border-status \; \
+         set -gu pane-border-format \; \
+         set -t "$1" -wu @drag_tgt
+}
+
+case "${1:-}" in
+on)     mode_on "${2:?session}" ;;
+off)    mode_off "${2:?session}" ;;
+toggle)
+    sess=${2:?session}
+    if [ "$(tmux show -t "$sess" -v key-table)" = drag ]; then
+        mode_off "$sess"
+    else
+        mode_on "$sess"
+    fi
+    ;;
+drop)
+    [ $# -eq 3 ] || usage
+    tgt=$2 zone=$3
+    src=$(tmux list-panes -t "$tgt" -f '#{pane_active}' -F '#{pane_id}')
+    if [ -z "$src" ] || [ "$src" = "$tgt" ]; then
+        exit 0
+    fi
+    case $zone in
+    left)   tmux join-pane -h -b -s "$src" -t "$tgt" ;;
+    right)  tmux join-pane -h    -s "$src" -t "$tgt" ;;
+    top)    tmux join-pane -v -b -s "$src" -t "$tgt" ;;
+    bottom) tmux join-pane -v    -s "$src" -t "$tgt" ;;
+    centre) tmux swap-pane -d -s "$src" -t "$tgt" ;;   # -d: фокус остаётся на несомой
+    *)      echo "tmux-pane-drag: unknown zone '$zone'" >&2; exit 2 ;;
+    esac
+    ;;
+to-window)
+    [ $# -eq 3 ] || usage
+    sess=$2 win=$3
+    read -r src cur < <(tmux display -p -t "$sess" '#{pane_id} #{window_id}')
+    if [ "$cur" = "$win" ]; then
+        exit 0
+    fi
+    tmux join-pane -s "$src" -t "$win" \; select-layout -t "$win"
+    ;;
+*)  usage ;;
+esac
