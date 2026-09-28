@@ -368,9 +368,10 @@ bindsym --locked XF86MonBrightnessUp   exec brightnessctl set 5%+
 bindsym --locked XF86MonBrightnessDown exec brightnessctl set 5%-
 
 ### Скриншоты
-# Вся логика в ~/.local/bin/shot: grim снимает, satty открывает для рисования.
-# Enter в satty — скопировать в буфер и закрыть, Ctrl+S — сохранить в
-# ~/Pictures/Screenshots, Escape — выкинуть.
+# Захват в ~/.local/bin/shot: grim снимает, satty открывает для рисования.
+# Что делают клавиши в satty — в ~/.config/satty/config.toml: Enter —
+# скопировать в буфер и закрыть, Ctrl+S — сохранить в ~/Pictures/Screenshots,
+# Escape — выкинуть.
 bindsym --to-code Print       exec shot        # выделить область мышью
 bindsym --to-code Shift+Print exec shot -w     # окно в фокусе
 bindsym --to-code $mod+Print  exec shot -f     # весь экран

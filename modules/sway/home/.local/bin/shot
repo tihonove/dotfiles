@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Скриншот под sway: grim снимает, satty открывает для аннотирования.
+#
+#   shot        выделить область мышью (slurp)
+#   shot -w     окно в фокусе
+#   shot -f     весь экран
+#
+# Дальше всё решает satty (бинды в ~/.config/satty/config.toml): Enter — снимок
+# в буфер обмена и выход, Ctrl+S — сохранить в ~/Pictures/Screenshots,
+# Escape — выкинуть. Вставить из буфера в файл: `clip paste`.
+#
+# Без xdg-desktop-portal: под wlroots grim — штатный путь, и никакой
+# Python-обвязки вокруг D-Bus, как было под GNOME, тут не нужно.
+
+set -euo pipefail
+
+die() { notify-send -u critical "Скриншот" "$1" 2>/dev/null || true; echo "$1" >&2; exit 1; }
+
+mode=area
+case "${1:-}" in
+    "")        ;;
+    -w|window) mode=window ;;
+    -f|full)   mode=full ;;
+    -a|area)   ;;
+    -h|--help) sed -n '2,10p' "$0" | cut -c3-; exit 0 ;;
+    *)         die "Неизвестный режим: $1 (shot [-w|-f])" ;;
+esac
+
+for cmd in grim satty; do
+    command -v "$cmd" >/dev/null || die "Нет $cmd — ./install.sh в dotfiles"
+done
+
+shot=$(mktemp --tmpdir shot-XXXXXX.png)
+trap 'rm -f "$shot"' EXIT
+
+# Ненулевой код у slurp — Escape, выходим молча, не открывая satty впустую.
+case "$mode" in
+    area)
+        geom=$(slurp -d) || exit 0
+        grim -g "$geom" "$shot"
+        ;;
+    window)
+        # rect у контейнера — вместе с рамкой sway, window_rect — только
+        # клиент, но его координаты считаются от контейнера, поэтому складываем.
+        geom=$(swaymsg -t get_tree | jq -r '
+            recurse(.nodes[]?, .floating_nodes[]?) | select(.focused)
+            | "\(.rect.x + .window_rect.x),\(.rect.y + .window_rect.y) \(.window_rect.width)x\(.window_rect.height)"')
+        [[ -n "$geom" ]] || die "Нет окна в фокусе"
+        grim -g "$geom" "$shot"
+        ;;
+    full)
+        # Экран, на котором фокус, а не все мониторы одной простынёй.
+        output=$(swaymsg -t get_outputs | jq -r '.[] | select(.focused) | .name')
+        grim -o "$output" "$shot"
+        ;;
+esac
+
+[[ -s "$shot" ]] || die "grim не снял ничего"
+
+satty --filename "$shot"

@@ -1,0 +1,24 @@
+# Аннотирование скриншотов. Сюда снимок попадает из ~/.local/bin/shot (Print
+# в sway).
+[general]
+# Не fullscreen: аннотируем уже вырезанный кусок, а окно sway и так делает
+# плавающим по центру (for_window com.gabm.satty в ~/.config/sway/config).
+fullscreen = false
+# Enter — снимок в буфер и выход. Ctrl+S — сохранить в output-filename.
+# Escape — выкинуть.
+early-exit = true
+actions-on-enter = ["save-to-clipboard"]
+actions-on-escape = ["exit"]
+copy-command = "wl-copy"
+initial-tool = "arrow"
+annotation-size-factor = 1.5
+corner-roundness = 12
+primary-highlighter = "block"
+default-hide-toolbars = false
+save-after-copy = false
+disable-notifications = false
+output-filename = "~/Pictures/Screenshots/shot-%Y-%m-%d_%H-%M-%S.png"
+
+[font]
+family = "Ubuntu"
+style = "Bold"
