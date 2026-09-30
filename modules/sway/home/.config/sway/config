@@ -225,6 +225,12 @@ bindsym --to-code $mod+Shift+Left   move left
 bindsym --to-code $mod+Shift+Down   move down
 bindsym --to-code $mod+Shift+Up     move up
 bindsym --to-code $mod+Shift+Right  move right
+# Окно на соседний монитор: PgUp — влево, PgDn — вправо, с крайнего — на
+# противоположный. Пара к $mod+Ctrl+PgUp/PgDn ниже (там уезжает весь стол).
+# `focus output` следом — чтобы фокус ехал за окном: сам `move` оставляет его
+# на исходном мониторе.
+bindsym --to-code $mod+Shift+Prior move container to output left, focus output left
+bindsym --to-code $mod+Shift+Next  move container to output right, focus output right
 
 ### Рабочие столы
 bindsym --to-code $mod+1 workspace number 1
