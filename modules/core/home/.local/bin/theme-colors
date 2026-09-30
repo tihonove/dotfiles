@@ -147,7 +147,11 @@ ROLES=(
 terminal_bg_mode() {
     local reply saved r g b len max lum
 
-    exec 3<>/dev/tty 2>/dev/null || return 1
+    # Скобки не лишние: у голого `exec 3<>/dev/tty 2>/dev/null` редиректы
+    # применяются по порядку, и ошибка открытия /dev/tty печатается ДО того, как
+    # stderr уйдёт в /dev/null. Без терминала (update.sh по ssh без -t) это
+    # давало «/dev/tty: No such device or address» на каждый вызов.
+    { exec 3<>/dev/tty; } 2>/dev/null || return 1
     saved=$(stty -g <&3 2>/dev/null) || { exec 3>&- ; return 1; }
 
     # raw -echo: ответ терминала не должен ни отобразиться, ни ждать перевода
