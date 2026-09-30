@@ -17,11 +17,25 @@
 
 set -euo pipefail
 
-# Тёмные насыщенные оттенки (палитра catppuccin Latte) — под светлый текст.
-readonly THM_GREEN="#40a02b"
-readonly THM_YELLOW="#df8e1d"
-readonly THM_RED="#d20f39"
-readonly THM_TEXT="#cdd6f4"    # светлый текст поверх цветного фона
+# Цвета — из палитры сессии: их кладёт в @thm_* файл ~/.config/tmux/theme.conf
+# (см. theme-colors tmux), а спросить у tmux можно прямо отсюда — скрипт и так
+# запускается им самим из #(). Фон модуля — акцент по порогу, текст — crust:
+# так же красит свои модули сам catppuccin, и так это читается на любой палитре
+# (у Nord акценты пастельные, светлый текст на них не читался бы).
+#
+# Раньше здесь были прибитые тёмные оттенки Latte под светлый текст; с
+# появлением второй палитры прибивать стало нечего.
+#
+# Запасные значения — Mocha, на случай, если theme.conf ещё не сгенерирован.
+thm() {
+    local v
+    v=$(tmux show -gqv "@thm_$1" 2>/dev/null) || v=
+    printf '%s' "${v:-$2}"
+}
+readonly THM_GREEN=$(thm green "#a6e3a1")
+readonly THM_YELLOW=$(thm yellow "#f9e2af")
+readonly THM_RED=$(thm red "#f38ba8")
+readonly THM_TEXT=$(thm crust "#11111b")    # тёмный текст поверх акцента
 
 readonly CAP=$''        # левая скруглённая powerline-шапка (U+E0B6)
 readonly ICON_CPU=$''   # микрочип (U+F2DB)

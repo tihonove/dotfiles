@@ -238,6 +238,25 @@ ensure_btop_theme() {
     "$colors" btop >"$dest"
 }
 
+ensure_tmux_theme() {
+    # Тот же случай, что btop: производный файл, который на машине без sway
+    # писать некому. tmux.conf читает его до плагина catppuccin (source-file -q,
+    # без файла плагин остаётся на своём flavor — Mocha), так что без этой
+    # функции удалённый tmux игнорировал бы палитру машины.
+    #
+    # В отличие от btop, обёртки при запуске нет: tmux — долгоживущий сервер, и
+    # переключать ему тему на лету на удалённой машине некому и незачем.
+    # Палитра — из ~/.config/dotfiles/palette на ЭТОЙ машине; режим, как у btop,
+    # угадывается по терминалу, из которого запущен update.
+    local colors="$HOME/.local/bin/theme-colors"
+    local dest="$HOME/.config/tmux/theme.conf"
+
+    [[ -x "$colors" ]] || { echo "  ⚠️  tmux: нет $colors, тема не сгенерирована"; return 0; }
+
+    mkdir -p "$(dirname "$dest")"
+    "$colors" tmux >"$dest"
+}
+
 ensure_claude_lease() {
     # Лиза на тяжёлые прогоны (claude-lease): проводка того, что нельзя положить
     # симлинком.
@@ -350,4 +369,5 @@ install_blesh
 install_kitten
 ensure_clip_spool
 ensure_btop_theme
+ensure_tmux_theme
 ensure_claude_lease

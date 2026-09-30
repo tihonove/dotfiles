@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Палитра сессии: Catppuccin Mocha (тёмная) / Latte (светлая).
+# Палитра сессии. Две оси, независимые друг от друга:
 #
-# Единственное место, где лежат сами цвета. Скрипт смотрит, какая тема стоит
-# сейчас (тот же gsettings, что и у theme-toggle), и печатает готовый кусок
-# конфига для запрошенного потребителя:
+#   палитра — catppuccin (Mocha/Latte) или nord; выбирается на машину файлом
+#             ~/.config/dotfiles/palette, пишет его `theme-toggle palette`;
+#   режим   — тёмный/светлый; gsettings, переключает `theme-toggle`.
+#
+# Единственное место, где лежат сами цвета. Скрипт смотрит, какая палитра и
+# какой режим стоят сейчас, и печатает готовый кусок конфига для запрошенного
+# потребителя:
 #
 #   theme-colors kitty   — строки kitty.conf; kitty зовёт скрипт сам, через
 #                          `geninclude theme.sh` (обёртка нужна, потому что
@@ -16,11 +20,22 @@
 #   theme-colors btop    — файл .theme для btop; тоже на диск, по фиксированному
 #                          пути ~/.config/btop/themes/catppuccin.theme, на который
 #                          ссылается btop.conf (см. theme-toggle refresh)
+#   theme-colors tmux    — @thm_* для плагина catppuccin; на диск, в
+#                          ~/.config/tmux/theme.conf, tmux.conf читает его ДО
+#                          плагина (см. theme-toggle refresh и modules/core/update)
+#   theme-colors swaylock — конфиг swaylock целиком; на диск (theme-toggle refresh)
+#   theme-colors vscode  — имя темы VS Code; theme-toggle palette вписывает его
+#                          в settings.json
+#   theme-colors slack   — строка кастомной темы Slack; вставляется руками
+#   theme-colors palette — имя текущей палитры (для theme-toggle)
 #
-# Вторым аргументом можно задать тему явно — удобно, чтобы сравнить два вывода,
-# не переключая сессию: `diff <(theme-colors css dark) <(theme-colors css light)`.
+# Вторым и третьим аргументами можно задать режим и палитру явно — удобно, чтобы
+# сравнить два вывода, не переключая сессию:
+# `diff <(theme-colors css dark catppuccin) <(theme-colors css dark nord)`.
 #
 # Значения Latte сняты с upstream: kitten themes --dump-theme Catppuccin-Latte.
+# Значения Nord — с nordtheme.com; раскладка по ANSI-16 сверена с
+# kitten themes --dump-theme Nord.
 
 set -euo pipefail
 
@@ -53,6 +68,41 @@ declare -A LATTE=(
     [overlay2]=#7c7f93  [overlay1]=#8c8fa1 [overlay0]=#9ca0b0
     [surface2]=#acb0be  [surface1]=#bcc0cc [surface0]=#ccd0da
     [base]=#eff1f5      [mantle]=#e6e9ef   [crust]=#dce0e8
+)
+
+# Nord в ролях Catppuccin. У Nord 16 цветов против 26 ролей, поэтому часть ролей
+# схлопывается в одно значение — это нормально, потребители различают роли, а
+# не значения. Где выбор был неочевиден:
+#
+#   base/mantle/crust — у Nord нет ничего темнее nord0, «на тон глубже» в нём
+#                       идёт светлее (kitty в родной теме Nord красит полосу
+#                       вкладок nord1). Поэтому mantle и crust = nord1, а не
+#                       ещё один nord0. crust ещё и текст на акцентах — nord1
+#                       там же, где у upstream-темы kitty;
+#   text/subtext      — Snow Storm светлеет от nord4 к nord6, а не тускнеет,
+#                       так что «приглушённый» текст выходит чуть ярче
+#                       основного. Зато ANSI white/bright white совпадают с
+#                       родной темой kitty (nord5/nord6), а fg — nord4, как везде;
+#   overlay           — nord3 и его осветлённый вариант #616e88 (так Nord красит
+#                       комментарии в редакторах; чистый nord3 для них тёмен);
+#   blue/lavender     — nord9 рамка, nord8 индикатор: по гайду Nord nord8 — главный
+#                       акцент интерфейса, nord9 — второстепенный;
+#   pink/mauve        — оба nord15, другого пурпурного у Nord нет;
+#   rosewater         — nord4: это курсор и выделение, у родной темы kitty курсор
+#                       тоже nord4. Выделение получается инверсным, зато читается.
+#
+# Светлого Nord нет: авторы его не рисовали, а Aurora на светлом фоне не
+# читается. Светлый режим при палитре nord — Latte (см. разбор аргументов).
+
+declare -A NORD=(
+    [rosewater]=#d8dee9 [flamingo]=#d08770 [pink]=#b48ead  [mauve]=#b48ead
+    [red]=#bf616a       [maroon]=#bf616a   [peach]=#d08770 [yellow]=#ebcb8b
+    [green]=#a3be8c     [teal]=#88c0d0     [sky]=#8fbcbb   [sapphire]=#5e81ac
+    [blue]=#81a1c1      [lavender]=#88c0d0
+    [text]=#d8dee9      [subtext1]=#e5e9f0 [subtext0]=#eceff4
+    [overlay2]=#616e88  [overlay1]=#616e88 [overlay0]=#4c566a
+    [surface2]=#4c566a  [surface1]=#434c5e [surface0]=#3b4252
+    [base]=#2e3440      [mantle]=#3b4252   [crust]=#3b4252
 )
 
 # Порядок ролей для вывода css — руками, а не по ключам массива: у ассоциативных
@@ -147,6 +197,24 @@ current_mode() {
     echo dark
 }
 
+# ── Текущая палитра ───────────────────────────────────────────────────────────
+# Файл вне репы, по той же конвенции, что ~/.config/dotfiles/profile: какая
+# палитра на этой машине — вещь машинная. Нет файла — catppuccin: так сессия
+# выглядела до появления второй оси, и так она выглядит везде, где палитру не
+# выбирали. Формат — одно слово, `#`-комментарии и пустые строки игнорируются.
+#
+# Через ssh палитра не передаётся: терминал по OSC 11 отдаёт только фон, по
+# нему различима яркость, но не палитра. На удалённой машине палитру задают
+# тем же файлом, руками.
+PALETTE_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/palette"
+
+current_palette() {
+    local p=
+    [[ -r "$PALETTE_FILE" ]] &&
+        p=$(sed -e 's/#.*//' -e 's/[[:space:]]//g' "$PALETTE_FILE" | grep -m1 .) || true
+    echo "${p:-catppuccin}"
+}
+
 # ── Вывод ─────────────────────────────────────────────────────────────────────
 
 emit_kitty() {
@@ -164,7 +232,7 @@ emit_kitty() {
     fi
 
     cat <<EOF
-# Catppuccin ${theme_name}. Сгенерировано theme-colors, руками не править.
+# ${theme_name}. Сгенерировано theme-colors, руками не править.
 
 foreground              ${C[text]}
 background              ${C[base]}
@@ -240,7 +308,7 @@ emit_css() {
     # обращаются к цветам через @имя-роли. Отдаём палитру целиком, а не только
     # используемые роли, — чтобы в style.css можно было взять любой цвет, не
     # трогая генератор.
-    echo "/* Catppuccin ${theme_name}. Сгенерировано theme-colors, руками не править."
+    echo "/* ${theme_name}. Сгенерировано theme-colors, руками не править."
     echo "   Файл перезаписывает theme-toggle refresh; в git его нет. */"
     local role
     for role in "${ROLES[@]}"; do
@@ -263,7 +331,7 @@ emit_btop() {
     #   память и сеть — градиенты в холодных тонах, тут высота столбика сама по
     #                   себе не «плохо», и красный сбивал бы с толку.
     cat <<EOF
-# Catppuccin ${theme_name}. Сгенерировано theme-colors, руками не править.
+# ${theme_name}. Сгенерировано theme-colors, руками не править.
 
 # Фон и текст
 theme[main_bg]="${C[base]}"
@@ -320,15 +388,143 @@ theme[upload_end]="${C[pink]}"
 EOF
 }
 
+emit_tmux() {
+    # Те же имена, что в themes/catppuccin_<flavor>_tmux.conf завендоренного
+    # плагина. Плагин ставит свои через `set -o` — только если опция ещё не
+    # задана, — поэтому tmux.conf читает этот файл ДО `run catppuccin.tmux`, и
+    # плагин наши значения не трогает. Живому tmux после смены файла нужен
+    # source-file всего tmux.conf (делает theme-toggle refresh): статус плагин
+    # собирает форматами `#{@thm_*}`, но часть цветов запекает в опции при
+    # загрузке, и без повторного прогона плагина они не обновятся.
+    #
+    # `set -g`, без -o: при повторном source значения должны перезаписываться.
+    cat <<EOF
+# ${theme_name}. Сгенерировано theme-colors, руками не править.
+# Пишут theme-toggle refresh и modules/core/update; tmux.conf читает до плагина.
+set -g @thm_bg "${C[base]}"
+set -g @thm_fg "${C[text]}"
+
+set -g @thm_rosewater "${C[rosewater]}"
+set -g @thm_flamingo "${C[flamingo]}"
+set -g @thm_pink "${C[pink]}"
+set -g @thm_mauve "${C[mauve]}"
+set -g @thm_red "${C[red]}"
+set -g @thm_maroon "${C[maroon]}"
+set -g @thm_peach "${C[peach]}"
+set -g @thm_yellow "${C[yellow]}"
+set -g @thm_green "${C[green]}"
+set -g @thm_teal "${C[teal]}"
+set -g @thm_sky "${C[sky]}"
+set -g @thm_sapphire "${C[sapphire]}"
+set -g @thm_blue "${C[blue]}"
+set -g @thm_lavender "${C[lavender]}"
+
+set -g @thm_subtext_1 "${C[subtext1]}"
+set -g @thm_subtext_0 "${C[subtext0]}"
+set -g @thm_overlay_2 "${C[overlay2]}"
+set -g @thm_overlay_1 "${C[overlay1]}"
+set -g @thm_overlay_0 "${C[overlay0]}"
+set -g @thm_surface_2 "${C[surface2]}"
+set -g @thm_surface_1 "${C[surface1]}"
+set -g @thm_surface_0 "${C[surface0]}"
+set -g @thm_mantle "${C[mantle]}"
+set -g @thm_crust "${C[crust]}"
+EOF
+}
+
+emit_swaylock() {
+    # Конфиг целиком, а не только цвета: у swaylock нет include, а без файла он
+    # поднимается в дефолтном белом. Опции вместе с их оговорками живут здесь.
+    #
+    # Цвета без «#»: swaylock читает голый RRGGBB[AA].
+    local base=${C[base]#\#} text=${C[text]#\#}
+    cat <<EOF
+# ${theme_name}. Сгенерировано theme-colors, руками не править.
+# Пишет theme-toggle refresh; в git файла нет.
+#
+# Замок всегда в тёмном режиме текущей палитры (theme-toggle зовёт генератор с
+# явным dark): swaylock читает файл один раз при запуске, перекрасить живой
+# нечем, а замок и должен быть тёмным.
+
+ignore-empty-password
+show-failed-attempts
+
+color=$base
+# indicator-idle-visible, а не голый \`indicator\`: короткого имени в swaylock 1.8
+# нет, а getopt_long дотягивает префикс до нескольких длинных опций и падает с
+# «option '--indicator' is ambiguous» — весь конфиг тогда не читается, и замок
+# молча не поднимается (проверено, потеряли на этом полчаса).
+indicator-idle-visible
+indicator-radius=90
+indicator-thickness=8
+indicator-caps-lock
+
+inside-color=$base
+inside-clear-color=$base
+inside-ver-color=$base
+inside-wrong-color=$base
+
+ring-color=${C[surface1]#\#}
+ring-clear-color=${C[yellow]#\#}
+ring-ver-color=${C[blue]#\#}
+ring-wrong-color=${C[red]#\#}
+
+key-hl-color=${C[green]#\#}
+bs-hl-color=${C[red]#\#}
+caps-lock-key-hl-color=${C[peach]#\#}
+caps-lock-bs-hl-color=${C[red]#\#}
+
+line-color=$base
+line-clear-color=$base
+line-ver-color=$base
+line-wrong-color=$base
+separator-color=$base
+
+text-color=$text
+text-clear-color=$text
+text-ver-color=$text
+text-wrong-color=$text
+EOF
+}
+
+emit_vscode() {
+    # Имя темы из расширения (label в его package.json). Совпадает с theme_name
+    # не случайно: theme_name и подобран как «имя темы, как её зовут снаружи».
+    # Разойдутся — разводить здесь, не трогая theme_name.
+    echo "$theme_name"
+}
+
+emit_slack() {
+    # Строка для Preferences → Themes → Custom theme, восемь цветов через запятую:
+    # фон колонки, фон при наведении в меню, активный пункт, текст активного
+    # пункта, пункт под курсором, текст, индикатор присутствия, бейдж упоминаний.
+    # Slack это поле снаружи не задаёт никто — строка вставляется руками.
+    printf '%s,%s,%s,%s,%s,%s,%s,%s\n' \
+        "${C[base]}" "${C[surface0]}" "${C[blue]}" "${C[crust]}" \
+        "${C[surface1]}" "${C[text]}" "${C[green]}" "${C[red]}"
+}
+
 # ── Разбор аргументов ─────────────────────────────────────────────────────────
 
 target="${1:-}"
 mode="${2:-$(current_mode)}"
+palette="${3:-$(current_palette)}"
 
-case "$mode" in
-    dark)  theme_name=Mocha; declare -n SRC=MOCHA ;;
-    light) theme_name=Latte; declare -n SRC=LATTE ;;
-    *) echo "${0##*/}: неизвестная тема: $mode (dark|light)" >&2; exit 2 ;;
+# theme_name — имя темы, как её зовут снаружи (заголовки файлов, VS Code).
+#
+# nord:light → Latte: светлого Nord не существует, а без светлого режима
+# переключатель ☾/☀ при палитре nord пришлось бы либо ломать, либо прятать.
+# Latte — рабочая светлая тема, которая уже была; кто нарисует светлый Nord,
+# заменит одну строку здесь.
+case "$palette:$mode" in
+    catppuccin:dark)  theme_name="Catppuccin Mocha"; declare -n SRC=MOCHA ;;
+    catppuccin:light) theme_name="Catppuccin Latte"; declare -n SRC=LATTE ;;
+    nord:dark)        theme_name="Nord";             declare -n SRC=NORD ;;
+    nord:light)       theme_name="Catppuccin Latte"; declare -n SRC=LATTE ;;
+    catppuccin:*|nord:*)
+        echo "${0##*/}: неизвестный режим: $mode (dark|light)" >&2; exit 2 ;;
+    *)
+        echo "${0##*/}: неизвестная палитра: $palette (catppuccin|nord)" >&2; exit 2 ;;
 esac
 
 # Копия с разыменованного nameref: дальше по коду обращаемся к ней как к C.
@@ -336,12 +532,17 @@ declare -A C
 for role in "${!SRC[@]}"; do C[$role]=${SRC[$role]}; done
 
 case "$target" in
-    kitty) emit_kitty ;;
-    sway)  emit_sway ;;
-    css)   emit_css ;;
-    btop)  emit_btop ;;
+    kitty)    emit_kitty ;;
+    sway)     emit_sway ;;
+    css)      emit_css ;;
+    btop)     emit_btop ;;
+    tmux)     emit_tmux ;;
+    swaylock) emit_swaylock ;;
+    vscode)   emit_vscode ;;
+    slack)    emit_slack ;;
+    palette)  echo "$palette" ;;
     *)
-        echo "usage: ${0##*/} kitty|sway|css|btop [dark|light]" >&2
+        echo "usage: ${0##*/} kitty|sway|css|btop|tmux|swaylock|vscode|slack|palette [dark|light] [catppuccin|nord]" >&2
         exit 2
         ;;
 esac

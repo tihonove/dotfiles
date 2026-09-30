@@ -56,8 +56,8 @@ seat seat0 xcursor_theme Adwaita 24
 # есть «воткнут внешний — погасить eDP-1» в его синтаксисе не выражается.
 # Профили — ~/.config/kanshi/config, пишет их $mod+P (см. «Клавиши — запуск»).
 #
-# Фон — дефолт тёмной темы, как и client.* ниже: на светлой его перекрывает
-# `theme-toggle refresh` из «Автозапуска».
+# Фон — дефолт (Catppuccin Mocha), как и client.* ниже: любую другую палитру
+# или режим поверх кладёт `theme-toggle refresh` из «Автозапуска».
 output * bg #1e1e2e solid_color
 
 ### Внешний вид
@@ -69,13 +69,14 @@ gaps outer 2
 # Имя семейства именно такое: ставится патченый Nerd Font, обычного
 # «JetBrains Mono» в системе нет и pango молча подобрал бы что попало.
 font pango:JetBrainsMono Nerd Font 10
-# Тема Catppuccin Mocha: border | background | text | indicator | child_border
+# Catppuccin Mocha: border | background | text | indicator | child_border
 #
-# Это ДЕФОЛТ, которым сессия окрашена до того, как отработают exec'и. Если стоит
-# светлая тема, ниже `theme-toggle refresh` перекроет эти строки палитрой Latte
-# — теми же командами через swaymsg, без reload. Значения совпадают с выводом
-# `theme-colors sway dark`; менять цвета надо там, тут — только чтобы стартовый
-# кадр не мигал.
+# Это ДЕФОЛТ, которым сессия окрашена до того, как отработают exec'и. Ниже
+# `theme-toggle refresh` перекроет эти строки текущей палитрой и режимом (Latte,
+# Nord…) — теми же командами через swaymsg, без reload. Значения совпадают с
+# выводом `theme-colors sway dark catppuccin`; менять цвета надо там, тут —
+# только чтобы стартовый кадр не мигал. На другой палитре первый кадр всё же
+# мигнёт Mocha: это доли секунды, генерировать ради них конфиг sway не стоит.
 client.focused          #89b4fa #1e1e2e #cdd6f4 #b4befe #89b4fa
 client.focused_inactive #45475a #1e1e2e #a6adc8 #45475a #45475a
 client.unfocused        #313244 #1e1e2e #6c7086 #313244 #313244
