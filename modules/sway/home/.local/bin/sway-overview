@@ -1,0 +1,370 @@
+#!/usr/bin/env python3
+"""GNOME-like overview for sway: workspaces as columns, windows as big app icons.
+
+Keys: h/j/k/l or arrows - move, Enter/click - focus window, 1-9 - go to workspace,
+Esc/q - close. Two-finger swipe / wheel scrolls the workspace strip.
+Run again while open to toggle it off.
+"""
+import json
+import os
+import signal
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
+gi.require_version("GtkLayerShell", "0.1")
+from gi.repository import GdkPixbuf, Gtk, GtkLayerShell  # noqa: E402
+
+SCRATCHPAD_PREFIX = "__i3_scratch"
+
+CSS = b"""
+window { background-color: rgba(18, 20, 26, 0.93); }
+#column {
+    background-color: rgba(255, 255, 255, 0.07);
+    border-radius: 14px;
+    padding: 10px;
+    margin: 8px;
+}
+#column.active { background-color: rgba(102, 170, 255, 0.16); }
+#ws-name {
+    color: #e6e9ef;
+    font-size: 15px;
+    font-weight: bold;
+    padding: 4px 10px 10px 10px;
+}
+#column.active #ws-name { color: #8ab4ff; }
+#empty { color: rgba(230, 233, 239, 0.35); font-size: 13px; padding: 20px; }
+#tile {
+    background: none;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: none;
+}
+#tile:hover { background-color: rgba(255, 255, 255, 0.07); }
+#tile:focus {
+    background-color: rgba(102, 170, 255, 0.22);
+    border-color: #8ab4ff;
+}
+#app { color: #e6e9ef; font-size: 13px; font-weight: bold; }
+#title { color: rgba(230, 233, 239, 0.55); font-size: 11px; }
+#hint { color: rgba(230, 233, 239, 0.4); font-size: 12px; padding: 6px 0 10px 0; }
+"""
+
+
+def swaymsg(*args):
+    return subprocess.run(["swaymsg", *args], capture_output=True, text=True).stdout
+
+
+def get_tree():
+    return json.loads(swaymsg("-t", "get_tree", "-r"))
+
+
+def desktop_index():
+    """lowercase app-id / StartupWMClass -> icon name, from .desktop files."""
+    index = {}
+    dirs = [
+        os.path.expanduser("~/.local/share/applications"),
+        "/usr/local/share/applications",
+        "/usr/share/applications",
+        "/var/lib/flatpak/exports/share/applications",
+        os.path.expanduser("~/.local/share/flatpak/exports/share/applications"),
+    ]
+    for d in dirs:
+        try:
+            names = os.listdir(d)
+        except OSError:
+            continue
+        for name in names:
+            if not name.endswith(".desktop"):
+                continue
+            icon = wmclass = None
+            try:
+                with open(os.path.join(d, name), errors="ignore") as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if line.startswith("[") and icon:
+                            break  # only the [Desktop Entry] section
+                        if line.startswith("Icon=") and not icon:
+                            icon = line[5:].strip()
+                        elif line.startswith("StartupWMClass=") and not wmclass:
+                            wmclass = line[15:].strip()
+            except OSError:
+                continue
+            if not icon:
+                continue
+            index.setdefault(name[:-8].lower(), icon)
+            index.setdefault(name[:-8].rsplit(".", 1)[-1].lower(), icon)
+            if wmclass:
+                index.setdefault(wmclass.lower(), icon)
+    return index
+
+
+class Overview(Gtk.Window):
+    def __init__(self):
+        super().__init__(type=Gtk.WindowType.TOPLEVEL)
+        self.desktop = desktop_index()
+        self.icon_theme = Gtk.IconTheme.get_default()
+        self.icon_size = 96
+        self.columns = []  # list of (ws_name, [buttons])
+
+        GtkLayerShell.init_for_window(self)
+        GtkLayerShell.set_namespace(self, "sway-overview")
+        GtkLayerShell.set_layer(self, GtkLayerShell.Layer.OVERLAY)
+        GtkLayerShell.set_keyboard_mode(self, GtkLayerShell.KeyboardMode.EXCLUSIVE)
+        for edge in ("TOP", "BOTTOM", "LEFT", "RIGHT"):
+            GtkLayerShell.set_anchor(self, getattr(GtkLayerShell.Edge, edge), True)
+
+        screen = self.get_screen()
+        visual = screen.get_rgba_visual()
+        if visual:
+            self.set_visual(visual)
+        self.connect("key-press-event", self.on_key)
+        self.connect("button-press-event", lambda *_: self.quit())
+
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(
+            screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        self.add(self.build())
+
+    # ---------- data ----------
+
+    def workspaces(self):
+        """[(name, num, focused, [windows])] in sway order."""
+        out = []
+        for output in get_tree().get("nodes", []):
+            if output.get("type") != "output":
+                continue
+            for node in output.get("nodes", []):
+                if node.get("type") != "workspace":
+                    continue
+                wins = []
+                self.collect(node, wins)
+                name = node.get("name")
+                if name.startswith(SCRATCHPAD_PREFIX):
+                    if not wins:
+                        continue
+                    name = "scratchpad"
+                out.append((name, node.get("num"), node.get("focused"), wins))
+        out.sort(key=lambda w: (w[1] is None, w[1] or 0, w[0]))
+        return out
+
+    def collect(self, node, acc):
+        for child in node.get("nodes", []) + node.get("floating_nodes", []):
+            if child.get("app_id") or child.get("window_properties"):
+                acc.append(child)
+            self.collect(child, acc)
+
+    def app_name(self, win):
+        return (
+            win.get("app_id")
+            or (win.get("window_properties") or {}).get("class")
+            or "?"
+        )
+
+    def load_icon(self, win):
+        name = self.app_name(win)
+        candidates = []
+        icon = self.desktop.get(name.lower())
+        if icon:
+            candidates.append(icon)
+        candidates += [name, name.lower(), name.lower().replace(" ", "-")]
+        candidates.append("application-x-executable")
+        for cand in candidates:
+            try:
+                if cand.startswith("/"):
+                    return GdkPixbuf.Pixbuf.new_from_file_at_size(
+                        cand, self.icon_size, self.icon_size
+                    )
+                pixbuf = self.icon_theme.load_icon(
+                    cand, self.icon_size, Gtk.IconLookupFlags.FORCE_SIZE
+                )
+                if pixbuf:
+                    return pixbuf
+            except Exception:
+                continue
+        return None
+
+    # ---------- ui ----------
+
+    def build(self):
+        workspaces = self.workspaces()
+        busiest = max((len(w[3]) for w in workspaces), default=0)
+        self.icon_size = 96 if busiest <= 4 else 64 if busiest <= 6 else 44
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_propagate_natural_height(True)
+        scroller.set_vexpand(True)
+        strip = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        strip.set_halign(Gtk.Align.CENTER)
+        strip.set_valign(Gtk.Align.CENTER)
+        scroller.add(strip)
+
+        focused_button = None
+        first_button = None
+        for name, num, ws_focused, wins in workspaces:
+            column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            column.set_name("column")
+            column.set_size_request(210, -1)
+            if ws_focused:
+                column.get_style_context().add_class("active")
+
+            header = Gtk.Label(label=name)
+            header.set_name("ws-name")
+            header.set_xalign(0.0)
+            column.pack_start(header, False, False, 0)
+
+            buttons = []
+            if not wins:
+                empty = Gtk.Label(label="пусто")
+                empty.set_name("empty")
+                column.pack_start(empty, False, False, 0)
+            for win in wins:
+                button = self.tile(win)
+                column.pack_start(button, False, False, 0)
+                buttons.append(button)
+                first_button = first_button or button
+                if win.get("focused"):
+                    focused_button = button
+            self.columns.append((name, num, buttons))
+            strip.pack_start(column, False, False, 0)
+
+        hint = Gtk.Label(
+            label="←/→ воркспейсы · ↑/↓ окна · Enter — перейти · 1-9 — воркспейс · Esc — закрыть"
+        )
+        hint.set_name("hint")
+        root.pack_start(scroller, True, True, 0)
+        root.pack_start(hint, False, False, 0)
+        self.initial_focus = focused_button or first_button
+        return root
+
+    def tile(self, win):
+        button = Gtk.Button()
+        button.set_name("tile")
+        button.set_relief(Gtk.ReliefStyle.NONE)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        pixbuf = self.load_icon(win)
+        if pixbuf:
+            box.pack_start(Gtk.Image.new_from_pixbuf(pixbuf), False, False, 0)
+        app = Gtk.Label(label=self.app_name(win))
+        app.set_name("app")
+        app.set_max_width_chars(18)
+        app.set_ellipsize(3)  # END
+        box.pack_start(app, False, False, 0)
+        title = Gtk.Label(label=win.get("name") or "")
+        title.set_name("title")
+        title.set_max_width_chars(20)
+        title.set_ellipsize(3)
+        title.set_lines(1)
+        box.pack_start(title, False, False, 0)
+        button.add(box)
+        con_id = win.get("id")
+        button.connect("clicked", lambda *_: self.focus_window(con_id))
+        return button
+
+    # ---------- actions ----------
+
+    def focus_window(self, con_id):
+        swaymsg(f"[con_id={con_id}]", "focus")
+        self.quit()
+
+    def go_workspace(self, num):
+        swaymsg("workspace", "number", str(num))
+        self.quit()
+
+    def locate(self):
+        """(column index, tile index) of the focused tile."""
+        focus = self.get_focus()
+        for ci, (_, _, buttons) in enumerate(self.columns):
+            for bi, button in enumerate(buttons):
+                if button is focus:
+                    return ci, bi
+        return 0, 0
+
+    def move(self, dcol, drow):
+        ci, bi = self.locate()
+        if dcol:
+            for _ in range(len(self.columns)):
+                ci = (ci + dcol) % len(self.columns)
+                if self.columns[ci][2]:
+                    break
+            bi = min(bi, len(self.columns[ci][2]) - 1)
+        else:
+            buttons = self.columns[ci][2]
+            if buttons:
+                bi = (bi + drow) % len(buttons)
+        buttons = self.columns[ci][2]
+        if buttons:
+            buttons[max(bi, 0)].grab_focus()
+
+    def on_key(self, _widget, event):
+        from gi.repository import Gdk
+
+        key = Gdk.keyval_name(event.keyval)
+        if key in ("Escape", "q"):
+            self.quit()
+        elif key in ("Left", "h"):
+            self.move(-1, 0)
+        elif key in ("Right", "l"):
+            self.move(1, 0)
+        elif key in ("Up", "k"):
+            self.move(0, -1)
+        elif key in ("Down", "j", "Tab"):
+            self.move(0, 1)
+        elif key in ("Return", "KP_Enter", "space"):
+            focus = self.get_focus()
+            if isinstance(focus, Gtk.Button):
+                focus.clicked()
+        elif key and key.isdigit():
+            self.go_workspace(int(key) or 10)
+        else:
+            return False
+        return True
+
+    def quit(self, *_):
+        Gtk.main_quit()
+
+
+def toggle():
+    """Second invocation closes the running overview instead of opening another."""
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+    pidfile = os.path.join(runtime, "sway-overview.pid")
+    try:
+        with open(pidfile) as fh:
+            pid = int(fh.read())
+        # make sure the pid was not recycled by an unrelated process
+        with open(f"/proc/{pid}/cmdline", "rb") as fh:
+            if b"sway-overview" in fh.read():
+                os.kill(pid, signal.SIGTERM)
+                return True
+    except (OSError, ValueError):
+        pass
+    with open(pidfile, "w") as fh:
+        fh.write(str(os.getpid()))
+    return False
+
+
+def main():
+    if toggle():
+        return
+    win = Overview()
+    win.show_all()
+    if win.initial_focus:
+        win.initial_focus.grab_focus()
+    signal.signal(signal.SIGTERM, lambda *_: Gtk.main_quit())
+    Gtk.main()
+    try:
+        os.remove(os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "sway-overview.pid"))
+    except OSError:
+        pass
+
+
+if __name__ == "__main__":
+    sys.exit(main())
