@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Пауза, когда пропали Bluetooth-наушники (убрал в кейс, разрядились, ушёл
+# из зоны), и продолжение, когда вернулись. Иначе PulseAudio молча перекидывает
+# звук на динамики ноута, и музыка продолжает играть вслух.
+#
+# Резидентный, запускается из sway/config (exec, не exec_always — один на
+# сессию). Два потока событий, оба без опроса:
+#   pactl subscribe            — появился/пропал синк;
+#   playerctl --follow status  — какой MPRIS-плеер когда встал на паузу
+#                                (mpv из ytm через mpv-mpris, Chrome, …).
+#
+# Пропал bluez-синк — ставим на паузу то, что играет, и запоминаем. Плюс
+# запоминаем то, что встало на паузу меньше GRACE секунд назад: Buds2 сами
+# шлют AVRCP-паузу, когда вынимаешь их из ушей (mpris-proxy из bluez доносит
+# её до плеера), и к моменту, когда они легли в кейс и отключились, играть
+# уже нечему. Без этой поправки обратно ничего не включалось.
+#
+# Появился bluez-синк — запомненным play. Что стояло на паузе давно, не
+# трогаем ни туда, ни обратно. Надевание наушники не сообщают никак, так что
+# продолжение — только по подключению, то есть после кейса.
+#
+# Имя синка в событии remove уже не узнать — синка нет, — поэтому помним
+# номер→имя по `pactl list short sinks` и обновляем на каждое new.
+#
+# Что происходит — в журнале: journalctl --user -t audio-autopause
+
+set -uo pipefail
+
+readonly GRACE=60
+
+declare -A sinks       # номер синка → имя
+declare -A paused_at   # плеер → когда встал на паузу (epoch)
+paused=()              # плееры, которые остановили мы, — их и включать обратно
+
+log() { logger -t audio-autopause -- "$*"; }
+
+refresh() {
+    sinks=()
+    local idx name
+    while read -r idx name _; do sinks[$idx]=$name; done < <(pactl list short sinks 2>/dev/null)
+}
+
+on_sink_removed() {
+    local p now; now=$(date +%s)
+    paused=()
+    for p in $(playerctl -l 2>/dev/null); do
+        if [[ $(playerctl -p "$p" status 2>/dev/null) == Playing ]]; then
+            playerctl -p "$p" pause 2>/dev/null && paused+=("$p")
+        elif (( now - ${paused_at[$p]:-0} < GRACE )); then
+            paused+=("$p")
+        fi
+    done
+    log "наушники пропали; продолжить потом: ${paused[*]:-ничего}"
+}
+
+on_sink_added() {
+    (( ${#paused[@]} )) || return 0
+    # Секунда, чтобы PulseAudio успел перевести потоки на наушники, — иначе
+    # первые такты уйдут в динамики.
+    sleep 1
+    local p
+    for p in "${paused[@]}"; do playerctl -p "$p" play 2>/dev/null; done
+    log "наушники вернулись; продолжаю: ${paused[*]}"
+    paused=()
+}
+
+# Оба потока сливаем в один, с метками. sed -u — построчно, без буфера. Умрёт
+# любой (PulseAudio перезапускается после апгрейда bluez, например) — гасим
+# остальных детей этой подоболочки и подписываемся заново. Не `kill 0`:
+# группа процессов у подоболочки общая со скриптом, убило бы и его.
+while :; do
+    refresh
+    while read -r src a b c d _; do
+        case $src in
+            pa)  # pa 'new'|'remove' on sink #N
+                [[ $b == on && $c == sink ]] || continue
+                idx=${d#\#}
+                case $a in
+                    "'new'")    refresh
+                                [[ ${sinks[$idx]:-} == bluez_* ]] && on_sink_added ;;
+                    "'remove'") [[ ${sinks[$idx]:-} == bluez_* ]] && on_sink_removed
+                                unset "sinks[$idx]" ;;
+                esac ;;
+            pl)  # pl <плеер> <статус>
+                [[ $b == Paused ]] && paused_at[$a]=$(date +%s) ;;
+        esac
+    done < <(
+        pactl subscribe 2>/dev/null | sed -u 's/^Event /pa /' &
+        playerctl -a --follow --format '{{playerName}} {{status}}' status 2>/dev/null | sed -u 's/^/pl /' &
+        wait -n
+        pkill -P $BASHPID 2>/dev/null
+    )
+    sleep 2
+done
