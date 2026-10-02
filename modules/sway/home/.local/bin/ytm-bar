@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# Пульт ytm в waybar: ⏮  󰝚 Название  ⏭ . Пока ytm ничего не играет, его не видно.
+#
+# Говорит с mpv, который запускает ytm, напрямую через его JSON IPC-сокет, а
+# не через команды `ytm next` и т.п.: те — Python, ~0.3 с старта на каждый
+# клик. ytm сам делает ровно то же (player.py: playlist-next force, cycle
+# pause), так что поведение одинаковое.
+#
+# Резидентный только `status`: подписывается на свойства mpv (observe_property)
+# и печатает строку по событию — опроса нет. Кнопки ⏮/⏭ — interval "once" +
+# signal 10: status сам шлёт SIGRTMIN+10, когда музыка появилась или пропала.
+# Пока ytm не запущен, status раз в 5 с смотрит, не появился ли сокет.
+#
+# Сокеты: безголовый ytm (`ytm play`) держит /run/user/$UID/ytm/mpv.sock,
+# каждая сессия `ytm tui` — свой /tmp/ytm-session-*/mpv.sock. Берём самый
+# свежий из живых.
+#
+# Использование (всё вызывает waybar, см. group/ytm в waybar/config.jsonc):
+#   ytm-bar status        — резидентный модуль с названием
+#   ytm-bar button prev|next
+#   ytm-bar toggle|prev|next
+#   ytm-bar vol +5|-5     — громкость самого mpv, то есть только музыки;
+#                           системную крутит колесо над модулем звука
+#   ytm-bar menu          — очередь в wofi, выбор прыгает на трек
+
+set -uo pipefail
+
+readonly STATE="${XDG_RUNTIME_DIR:-/run/user/$UID}/ytm-bar.active"
+readonly WOFI_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/wofi/ytm-queue.conf"
+readonly SIGNAL=10
+
+# Глифы Material Design из Nerd Font — escape'ами, а не литералами: пустой
+# глиф в файле выглядит как пробел (см. комментарии в waybar/config.jsonc).
+readonly G_PLAY=$'\U000F075A'   # 󰝚 music-note — играет
+readonly G_PAUSE=$'\U000F03E4'  # 󰏤 pause — на паузе
+readonly G_PREV=$'\U000F04AE'   # 󰒮
+readonly G_NEXT=$'\U000F04AD'   # 󰒭
+
+find_sock() {
+    local s
+    # ls -t: свежие первыми. Файл сокета переживает смерть mpv, поэтому
+    # проверяем, что на том конце кто-то отвечает.
+    for s in $(ls -t "${XDG_RUNTIME_DIR:-/run/user/$UID}"/ytm/mpv.sock /tmp/ytm-session-*/mpv.sock 2>/dev/null); do
+        socat -u OPEN:/dev/null UNIX-CONNECT:"$s" 2>/dev/null && { echo "$s"; return 0; }
+    done
+    return 1
+}
+
+mpv_cmd() {  # mpv_cmd '"playlist-next","force"'
+    local s; s=$(find_sock) || return 0
+    printf '{"command":[%s]}\n' "$1" | socat - UNIX-CONNECT:"$s" 2>/dev/null
+}
+
+set_active() {
+    local now=$1 was=""
+    [[ -f $STATE ]] && was=$(<"$STATE")
+    [[ $now == "$was" ]] && return
+    printf '%s' "$now" >"$STATE"
+    pkill -RTMIN+$SIGNAL -x waybar 2>/dev/null || true
+}
+
+status() {
+    # Сторож из lang-status: при перезапуске waybar убивает только sh-лидера
+    # группы, а socat/jq ниже остались бы сиротами.
+    local pgid; pgid=$(ps -o pgid= $$ | tr -d ' ')
+    ( while [[ -d /proc/$pgid ]]; do sleep 5; done; kill -TERM -- "-$pgid" ) &
+
+    local jq_prog='
+      def esc: gsub("&";"&amp;") | gsub("<";"&lt;") | gsub(">";"&gt;");
+      foreach (inputs | select(.event == "property-change")) as $e
+        ({}; .[$e.name] = $e.data;
+         if .["idle-active"] == true or .["media-title"] == null then
+           {text: ""}
+         else
+           (.["media-title"]) as $t
+           | {text: ((if .pause then $pause else $play end) + " " + ($t | esc)),
+              tooltip: (($t | esc) + "\n"
+                        + "\((.["playlist-pos"] // 0) + 1) из \(.["playlist-count"] // 0) в очереди, "
+                        + "громкость \(.volume // 100 | round)%\n"
+                        + "ЛКМ — пауза, ПКМ — очередь, колесо — громкость музыки"),
+              class: (if .pause then "paused" else "playing" end)}
+         end)'
+
+    local sock prev=""
+    while :; do
+        if ! sock=$(find_sock); then
+            [[ $prev == '{"text":""}' ]] || { echo '{"text":""}'; prev='{"text":""}'; }
+            set_active ""
+            sleep 5; continue
+        fi
+        # coproc, а не `{ printf; sleep infinity; } | socat`: stdin socat'а должен
+        # оставаться открытым (на EOF он закрыл бы и подписку), а конвейер со
+        # sleep infinity bash ждал бы вечно и после смерти mpv. Здесь stdin
+        # держит наш fd 4: умрёт mpv — socat выйдет, jq получит EOF, fd закроем.
+        coproc MPV { exec socat - UNIX-CONNECT:"$sock" 2>/dev/null; }
+        exec 3<&"${MPV[0]}" 4>&"${MPV[1]}"
+        printf '%s\n' \
+            '{"command":["observe_property",1,"media-title"]}' \
+            '{"command":["observe_property",2,"pause"]}' \
+            '{"command":["observe_property",3,"playlist-pos"]}' \
+            '{"command":["observe_property",4,"playlist-count"]}' \
+            '{"command":["observe_property",5,"idle-active"]}' \
+            '{"command":["observe_property",6,"volume"]}' >&4
+        # prev живёт в подоболочке конвейера, поэтому после выхода — сброс ниже.
+        jq -n --unbuffered -c --arg play "$G_PLAY" --arg pause "$G_PAUSE" "$jq_prog" <&3 \
+          | while IFS= read -r line; do
+                [[ $line == "$prev" ]] && continue
+                printf '%s\n' "$line"; prev=$line
+                [[ $line == '{"text":""}' ]] && set_active "" || set_active 1
+            done
+        exec 3<&- 4>&-
+        wait "${MPV_PID:-}" 2>/dev/null
+        echo '{"text":""}'; prev='{"text":""}'
+        set_active ""
+        sleep 1
+    done
+}
+
+button() {
+    [[ -f $STATE && $(<"$STATE") == 1 ]] || { echo; return; }
+    case $1 in prev) echo "$G_PREV" ;; next) echo "$G_NEXT" ;; esac
+}
+
+menu() {
+    # Повторный клик закрывает открытое меню, как у power-menu.
+    pkill -x -f "wofi --dmenu --conf $WOFI_CONF" 2>/dev/null && return 0
+    # Очередь берём у самого ytm, а не из playlist mpv: треки от радио ytm кладёт
+    # с force-media-title, а это пофайловая опция — в playlist mpv у ещё не
+    # игравших записей названия нет, одни ссылки. `ytm queue` их знает (~0.2 с,
+    # по клику это не страшно). Порядок тот же, что у mpv, — индекс годится для
+    # playlist-play-index. Если ytm не ответил (например, играет сессия `ytm
+    # tui`, а не безголовый mpv) — хотя бы ссылки из mpv.
+    local items choice
+    items=$( { ytm --json queue 2>/dev/null | jq -e '.queue | map({title: (.title // (.track | "\(.title) / \(.artist)") // .url), current})' \
+               || mpv_cmd '"get_property","playlist"' | jq '.data // [] | map({title: (.title // .filename), current})'; } \
+             | jq -r 'to_entries[] | "\(.key + 1). \(if .value.current then "▶ " else "" end)\(.value.title)"')
+    [[ -n $items ]] || return 0
+    choice=$(printf '%s\n' "$items" | wofi --dmenu --conf "$WOFI_CONF") || return 0
+    mpv_cmd "\"playlist-play-index\",$(( ${choice%%.*} - 1 ))" >/dev/null
+}
+
+case ${1:-} in
+    status) status ;;
+    button) button "${2:-}" ;;
+    toggle) mpv_cmd '"cycle","pause"' >/dev/null ;;
+    # add, а не set: шаг относительный, mpv сам держит 0..volume-max.
+    vol)    [[ ${2:-} =~ ^[+-]?[0-9]+$ ]] && mpv_cmd "\"add\",\"volume\",${2#+}" >/dev/null ;;
+    prev)   mpv_cmd '"playlist-prev","force"' >/dev/null ;;
+    next)   mpv_cmd '"playlist-next","force"' >/dev/null ;;
+    menu)   menu ;;
+    *) echo "usage: ytm-bar status|button prev|next|toggle|prev|next|vol ±N|menu" >&2; exit 2 ;;
+esac

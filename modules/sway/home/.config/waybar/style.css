@@ -201,6 +201,30 @@ button:hover {
 #idle_inhibitor.activated { color: @text; }
 #pulseaudio.muted         { color: @overlay0; }
 
+/* Пульт ytm (group/ytm): ⏮ название ⏭. Тон тот же @subtext0, пауза уходит в
+   @overlay0 — как немой звук. Кнопки кликабельные, подсветка как у звука и
+   языка; margin/radius постоянные по той же причине (см. «Кликабельное»).
+   Пустые модули waybar прячет сам, так что без ytm от группы ничего не
+   остаётся. */
+#custom-ytm,
+#custom-ytm-prev,
+#custom-ytm-next {
+    color: @subtext0;
+    margin: 3px 0;
+    border-radius: 4px;
+    transition: background-color .15s ease-in-out;
+}
+#custom-ytm              { padding: 0 6px; }
+#custom-ytm-prev,
+#custom-ytm-next         { padding: 0 6px; }
+#custom-ytm.paused       { color: @overlay0; }
+#custom-ytm:hover,
+#custom-ytm-prev:hover,
+#custom-ytm-next:hover {
+    background-color: @surface0;
+    color: @text;
+}
+
 #network.disconnected    { color: @red; }
 
 /* Ждущие обновления — состояние, серое как всё. Нужная перезагрузка (новое

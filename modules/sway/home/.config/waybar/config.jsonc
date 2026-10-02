@@ -31,6 +31,7 @@
     // соседей при каждом появлении новой иконки; с краю группы он растёт влево,
     // в пустоту, и ничего не двигает.
     "modules-right": [
+        "group/ytm",
         "tray",
         "custom/updates",
         "idle_inhibitor",
@@ -80,6 +81,46 @@
         "format": "{}",
         "return-type": "json",
         "exec": "$HOME/.local/bin/lang-status"
+    },
+
+    // Пульт ytm (музыка с YouTube в терминале): ⏮  󰝚 Название  ⏭ . Пока ytm
+    // ничего не играет, все три пустые и waybar их прячет. Стоит левее трея —
+    // появляется и исчезает с края, ничего не двигая.
+    //
+    // Всё делает ~/.local/bin/ytm-bar, там же разбор. Название — резидентный
+    // скрипт, подписан на mpv по IPC, без опроса. Кнопки — interval "once" +
+    // signal 10: их перерисовывает сам ytm-bar, когда музыка появилась/пропала.
+    "group/ytm": {
+        "orientation": "horizontal",
+        "modules": ["custom/ytm-prev", "custom/ytm", "custom/ytm-next"]
+    },
+    "custom/ytm": {
+        "format": "{}",
+        "return-type": "json",
+        "exec": "$HOME/.local/bin/ytm-bar status",
+        "max-length": 40,
+        "on-click": "$HOME/.local/bin/ytm-bar toggle",
+        "on-click-right": "$HOME/.local/bin/ytm-bar menu",
+        // Колесо — громкость только музыки (volume самого mpv), системная
+        // остаётся за модулем pulseaudio.
+        "on-scroll-up": "$HOME/.local/bin/ytm-bar vol +5",
+        "on-scroll-down": "$HOME/.local/bin/ytm-bar vol -5"
+    },
+    "custom/ytm-prev": {
+        "format": "{}",
+        "exec": "$HOME/.local/bin/ytm-bar button prev",
+        "interval": "once",
+        "signal": 10,
+        "tooltip": false,
+        "on-click": "$HOME/.local/bin/ytm-bar prev"
+    },
+    "custom/ytm-next": {
+        "format": "{}",
+        "exec": "$HOME/.local/bin/ytm-bar button next",
+        "interval": "once",
+        "signal": 10,
+        "tooltip": false,
+        "on-click": "$HOME/.local/bin/ytm-bar next"
     },
 
     "idle_inhibitor": {

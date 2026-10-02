@@ -138,5 +138,76 @@ install_satty() {
     return 1
 }
 
+# ytm — YouTube Music в терминале (https://github.com/MaheshBhushan/yt-music-cli),
+# под него пульт в waybar (~/.local/bin/ytm-bar). Python-пакет, ставится через
+# `uv tool`: в Ubuntu нет python3-venv, а uv — один бинарник без sudo.
+#
+# --with secretstorage: без него ytm не может импортировать вход из Chrome:
+# куки Chrome шифрует ключом из gnome-keyring, а достаёт его yt-dlp через этот
+# модуль. Без модуля все куки «не расшифровываются».
+#
+# Upgrade на каждом прогоне — не прихоть: внутри окружения ytm свой yt-dlp, а
+# устаревший yt-dlp YouTube отшивает 403 за пару месяцев. uv tool upgrade
+# обновляет и его, а состав (с secretstorage) берёт из uv-receipt.toml.
+#
+# Вход в аккаунт — руками и один раз, автоматизировать тут нечего:
+#   XDG_CURRENT_DESKTOP=GNOME ytm login --from-browser chrome
+# Переменная нужна потому, что под sway она пустая, и yt-dlp тогда ищет ключ
+# не в gnome-keyring.
+install_ytm() {
+    echo "ytm..."
+
+    local uv
+    uv="$(command -v uv || true)"
+    if [[ -z "$uv" ]]; then
+        echo "  ставлю uv"
+        curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh >/dev/null
+        uv="$BIN_DIR/uv"
+    fi
+
+    local before after ytdlp
+    before=$("$uv" tool list 2>/dev/null | grep -oP '^ytm v\K\S+' || true)
+    if [[ -z "$before" ]]; then
+        "$uv" tool install --quiet ytm --with secretstorage
+        echo "  ✅ $("$uv" tool list | grep '^ytm ')"
+    else
+        "$uv" tool upgrade --quiet ytm
+        after=$("$uv" tool list | grep -oP '^ytm v\K\S+')
+        ytdlp=$("$("$uv" tool dir)/ytm/bin/yt-dlp" --version 2>/dev/null || echo '?')
+        if [[ "$before" == "$after" ]]; then
+            echo "  ✅ уже актуален: ytm $after, yt-dlp $ytdlp"
+        else
+            echo "  ✅ ytm $before -> $after, yt-dlp $ytdlp"
+        fi
+    fi
+}
+
+# Системные пакеты под музыку. В requires их нет намеренно: без них не работает
+# только музыкальная часть, а requires — это «без этого модуль не ставится
+# вовсе». sudo dotfiles не зовут, поэтому только подсказка.
+#
+#   mpv        — ytm играет через него;
+#   mpv-mpris  — плагин: mpv становится MPRIS-плеером. Без него не доходят
+#                медиаклавиши (playerctl) и пауза, когда снял наушник
+#                (AVRCP → mpris-proxy из bluez → MPRIS), а audio-autopause не
+#                видит mpv. Команды у плагина нет, поэтому проверка по файлу;
+#   socat      — им ytm-bar ходит в IPC-сокет mpv. Без него пульт просто
+#                не показывается.
+check_media_packages() {
+    echo "Пакеты для музыки..."
+    local missing=()
+    have mpv   || missing+=(mpv)
+    [[ -e /etc/mpv/scripts/mpris.so ]] || missing+=(mpv-mpris)
+    have socat || missing+=(socat)
+    if (( ${#missing[@]} )); then
+        echo "  ⚠  нет: ${missing[*]}"
+        echo "     sudo apt install ${missing[*]}"
+    else
+        echo "  ✅ на месте"
+    fi
+}
+
 install_satty
 register_browser_here
+install_ytm
+check_media_packages
