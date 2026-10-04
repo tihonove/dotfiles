@@ -1,0 +1,140 @@
+{
+  "meta": {
+    "label": "before",
+    "ambient_c": null,
+    "fixed_watts": 20.0,
+    "fixed_fan": null,
+    "kernel": "6.14.0-36-generic",
+    "bios": "R1SET55W(1.26)",
+    "platform_profile": "balanced",
+    "epp": "balance_performance",
+    "battery_status": "Not charging",
+    "battery_capacity": "94",
+    "nvidia_runtime_status": "active",
+    "orig_limits": {
+      "/sys/class/powercap/intel-rapl:0/constraint_0_power_limit_uw": "55000000",
+      "/sys/class/powercap/intel-rapl:0/constraint_1_power_limit_uw": "55000000",
+      "/sys/class/powercap/intel-rapl-mmio:0/constraint_0_power_limit_uw": "55000000",
+      "/sys/class/powercap/intel-rapl-mmio:0/constraint_1_power_limit_uw": "55000000"
+    },
+    "durations": {
+      "idle": 600,
+      "fixed": 600,
+      "max": 600
+    },
+    "time_windows": {
+      "/sys/class/powercap/intel-rapl:0/constraint_2_time_window_us": null,
+      "/sys/class/powercap/intel-rapl:0/constraint_1_time_window_us": "2440",
+      "/sys/class/powercap/intel-rapl:0/constraint_0_time_window_us": "27983872",
+      "/sys/class/powercap/intel-rapl-mmio:0/constraint_2_time_window_us": null,
+      "/sys/class/powercap/intel-rapl-mmio:0/constraint_1_time_window_us": "2440",
+      "/sys/class/powercap/intel-rapl-mmio:0/constraint_0_time_window_us": "27983872"
+    },
+    "cores": {
+      "Core 0": 58.0,
+      "Core 4": 49.0,
+      "Core 8": 54.0,
+      "Core 9": 54.0,
+      "Core 10": 54.0,
+      "Core 11": 54.0,
+      "Core 12": 50.0,
+      "Core 13": 50.0,
+      "Core 14": 50.0,
+      "Core 15": 50.0
+    },
+    "uptime_s": 388989.36,
+    "throttle_count_at_start": 104992
+  },
+  "snapshots": {
+    "fixed": {
+      "limits": {
+        "/sys/class/powercap/intel-rapl:0/constraint_0_power_limit_uw": "55000000",
+        "/sys/class/powercap/intel-rapl:0/constraint_1_power_limit_uw": "55000000",
+        "/sys/class/powercap/intel-rapl-mmio:0/constraint_0_power_limit_uw": "55000000",
+        "/sys/class/powercap/intel-rapl-mmio:0/constraint_1_power_limit_uw": "55000000"
+      },
+      "nvidia": "active",
+      "throttle_count": 104992,
+      "pkg_c": 45.0,
+      "platform_profile": "balanced",
+      "epp": "balance_performance"
+    },
+    "max": {
+      "limits": {
+        "/sys/class/powercap/intel-rapl:0/constraint_0_power_limit_uw": "55000000",
+        "/sys/class/powercap/intel-rapl:0/constraint_1_power_limit_uw": "55000000",
+        "/sys/class/powercap/intel-rapl-mmio:0/constraint_0_power_limit_uw": "55000000",
+        "/sys/class/powercap/intel-rapl-mmio:0/constraint_1_power_limit_uw": "55000000"
+      },
+      "nvidia": "active",
+      "throttle_count": 105026,
+      "pkg_c": 49.0,
+      "platform_profile": "balanced",
+      "epp": "balance_performance"
+    },
+    "end": {
+      "limits": {
+        "/sys/class/powercap/intel-rapl:0/constraint_0_power_limit_uw": "55000000",
+        "/sys/class/powercap/intel-rapl:0/constraint_1_power_limit_uw": "55000000",
+        "/sys/class/powercap/intel-rapl-mmio:0/constraint_0_power_limit_uw": "55000000",
+        "/sys/class/powercap/intel-rapl-mmio:0/constraint_1_power_limit_uw": "55000000"
+      },
+      "nvidia": "active",
+      "throttle_count": 230376,
+      "pkg_c": 53.0,
+      "platform_profile": "balanced",
+      "epp": "balance_performance"
+    }
+  },
+  "idle": {
+    "pkg_c": 43.71,
+    "ec_cpu_c": 51.09,
+    "fan_rpm": 1800.0,
+    "pkg_w": 3.54,
+    "mhz": 478.13,
+    "pkg_c_max": 79.0,
+    "core_spread_c": 3.44,
+    "core_spread_c_max": 21.0
+  },
+  "fixed": {
+    "pkg_c": 85.65,
+    "ec_cpu_c": 86.24,
+    "fan_rpm": 4400.0,
+    "pkg_w": 20.0,
+    "mhz": 2386.69,
+    "pkg_c_max": 89.0,
+    "core_spread_c": 2.13,
+    "core_spread_c_max": 6.0,
+    "ops_per_s": 13668.7,
+    "start_c": 45.0,
+    "c_at_1s": 56.0,
+    "c_at_3s": 58.0,
+    "c_at_10s": 61.0,
+    "c_at_30s": 65.0,
+    "s_to_90c": null,
+    "s_to_95c": null
+  },
+  "rest_s": 600,
+  "max": {
+    "pkg_c": 94.74,
+    "ec_cpu_c": 95.0,
+    "fan_rpm": 4400.0,
+    "pkg_w": 21.13,
+    "mhz": 2387.23,
+    "pkg_c_max": 97.0,
+    "core_spread_c": 1.92,
+    "core_spread_c_max": 8.0,
+    "ops_per_s": 13877.1,
+    "first_30s_w": 43.62,
+    "throttle_events": 125283,
+    "start_c": 49.0,
+    "c_at_1s": 88.0,
+    "c_at_3s": 88.0,
+    "c_at_10s": 94.0,
+    "c_at_30s": 94.0,
+    "s_to_90c": 4,
+    "s_to_95c": 7
+  },
+  "cooldown_s": null,
+  "throttle_events_total": 125384
+}
