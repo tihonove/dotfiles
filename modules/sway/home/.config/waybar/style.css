@@ -231,6 +231,32 @@ button:hover {
    ядро уже стоит, а работает старое) — уже повод, поэтому жёлтая. */
 #custom-updates.reboot   { color: @yellow; }
 
+/* Slack (group/slack): значок + красный кружок с числом. Значок крупнее
+   остальных (18px против 13px) — это «иконка приложения», как в трее, а не
+   символ-прибор. Без непрочитанного он серый, как вся группа; с ним — @text.
+   Кружок — единственное красное на панели в штатном режиме: непрочитанное и
+   должно быть заметно. Высота 16px из 30 панели, border-radius больше
+   половины высоты — для одной цифры круг, для двух-трёх пилюля. */
+#custom-slack {
+    font-size: 18px;
+    padding: 0 4px 0 8px;
+    color: @subtext0;
+}
+#custom-slack.unread     { color: @text; }
+#custom-slack:hover      { color: @text; }
+
+#custom-slack-count {
+    font-size: 10px;
+    font-weight: bold;
+    color: @base;
+    background-color: @red;
+    border-radius: 999px;
+    min-width: 16px;
+    min-height: 16px;
+    padding: 0 4px;
+    margin: 7px 8px 7px 0;
+}
+
 /* Цвета прямоугольника температуры тут НЕ задаются, хотя место напрашивается.
    Три символа датчиков — один лейбл, а CSS красит лейбл целиком; покрасить один
    символ из трёх можно только Pango-разметкой в самом тексте. Поэтому цвет

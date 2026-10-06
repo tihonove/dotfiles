@@ -32,6 +32,7 @@
     // в пустоту, и ничего не двигает.
     "modules-right": [
         "group/ytm",
+        "group/slack",
         "tray",
         "custom/updates",
         "idle_inhibitor",
@@ -132,12 +133,37 @@
     },
 
     "tray": {
-        "spacing": 10
+        "spacing": 0
     },
 
     "clock": {
         "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
         "format-alt": "{:%Y-%m-%d}"
+    },
+
+    // Slack — веб-версия, поставленная из Chrome как приложение: трея у неё нет,
+    // непрочитанное видно только в заголовке окна. Его и читает slack-status
+    // (резидентный, подписан на события окон sway). Slack не запущен — модуль
+    // пустой и прячется. Клик — показать окно Slack, в том числе из scratchpad.
+    //
+    // Два модуля: значок и красный кружок с числом. Кружок — CSS своего
+    // виджета (border-radius), в одном лейбле Pango такого не нарисует.
+    // Непрочитанного нет — кружок пустой, waybar его прячет.
+    "group/slack": {
+        "orientation": "horizontal",
+        "modules": ["custom/slack", "custom/slack-count"]
+    },
+    "custom/slack": {
+        "format": "{}",
+        "return-type": "json",
+        "exec": "$HOME/.local/bin/slack-status icon",
+        "on-click": "$HOME/.local/bin/slack-status focus"
+    },
+    "custom/slack-count": {
+        "format": "{}",
+        "return-type": "json",
+        "exec": "$HOME/.local/bin/slack-status count",
+        "on-click": "$HOME/.local/bin/slack-status focus"
     },
 
     // Датчики: три символа подряд, без единого пробела — столбик загрузки,
