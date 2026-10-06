@@ -1,0 +1,50 @@
+#!/home/tihonove/.local/share/uv/tools/ytm/bin/python
+# Альбомы для ytm, у которого есть только поштучные play/add.
+#
+#   ytm-album <запрос>     найти альбомы, запомнить список
+#   ytm-album <N>          играть альбом N из последнего поиска
+#   ytm-album <MPREb_…>    играть альбом по browseId
+#   ytm-album -a <N|id>    дописать альбом в конец очереди, не прерывая текущее
+#
+# Треки достаём через ytmusicapi из окружения ytm, а в очередь кладём самим
+# `ytm play`/`ytm add`, чтобы ytm знал метаданные (status, пульт в waybar).
+import json, os, subprocess, sys
+from ytmusicapi import YTMusic
+
+STATE = os.path.expanduser("~/.cache/ytm-album-last.json")
+args = sys.argv[1:]
+append = bool(args) and args[0] == "-a"
+if append:
+    args = args[1:]
+if not args:
+    sys.exit(__doc__ or "usage: ytm-album <запрос> | <N> | <browseId> | -a <N|browseId>")
+what = " ".join(args)
+yt = YTMusic()
+
+if not (what.isdigit() or what.startswith("MPRE")):
+    hits = yt.search(what, filter="albums", limit=20)
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    with open(STATE, "w") as f:
+        json.dump([h["browseId"] for h in hits], f)
+    for i, h in enumerate(hits, 1):
+        artists = ", ".join(a["name"] for a in h.get("artists") or [])
+        print(f"{i:2}. {h['title']} — {artists} ({h.get('year') or '?'})")
+    sys.exit(0)
+
+if what.isdigit():
+    try:
+        with open(STATE) as f:
+            what = json.load(f)[int(what) - 1]
+    except (OSError, IndexError):
+        sys.exit("нет такого номера; сначала ytm-album <запрос>")
+
+album = yt.get_album(what)
+ids = [t["videoId"] for t in album["tracks"] if t.get("videoId")]
+if not ids:
+    sys.exit("в альбоме нет доступных треков")
+print(f"{album['title']}: {len(ids)} треков")
+first = ["ytm", "add" if append else "play", ids[0]]
+subprocess.run(first, check=True, stdout=subprocess.DEVNULL)
+for vid in ids[1:]:
+    subprocess.run(["ytm", "add", vid], check=True, stdout=subprocess.DEVNULL)
+print("в очереди")
