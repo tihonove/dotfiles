@@ -75,6 +75,10 @@ TMUX_CONF="$HOME/.config/tmux/tmux.conf"
 # режим текущей палитры — замок перекрасить нечем, а тёмным ему и положено быть.
 SWAYLOCK_CONF="$HOME/.config/swaylock/config"
 
+# Значок Telegram в трее: три SVG в пользовательской теме иконок, под именами,
+# которые Telegram ищет сам (см. emit_telegram в theme-colors).
+ICONS_HICOLOR="$HOME/.local/share/icons/hicolor"
+
 # Палитра: файл вне репы, по конвенции ~/.config/dotfiles/profile. Читает его
 # theme-colors, пишет только `palette` ниже.
 PALETTE_FILE="$HOME/.config/dotfiles/palette"
@@ -176,6 +180,21 @@ refresh() {
     # swaylock: явный dark — см. SWAYLOCK_CONF выше.
     mkdir -p "$(dirname "$SWAYLOCK_CONF")"
     "$COLORS" swaylock dark | write_atomic "$SWAYLOCK_CONF"
+
+    # Telegram: значок по имени ищется через icon-theme.cache, так что после
+    # записи кэш пересобирается. Живой Telegram запрашивает значок заново только
+    # при смене состояния (пришло сообщение, прочитали, mute) — до этого в трее
+    # остаётся старый цвет. Без сборки Telegram генератор падает, и шаг молча
+    # пропускается. Вывод сначала в переменную: в трубу write_atomic пустой
+    # вывод упавшего генератора лёг бы на диск пустым значком.
+    local variant svg out
+    mkdir -p "$ICONS_HICOLOR/symbolic/apps"
+    for variant in "" mute attention; do
+        svg="$ICONS_HICOLOR/symbolic/apps/org.telegram.desktop${variant:+-$variant}-symbolic.svg"
+        out=$("$COLORS" "telegram${variant:+-$variant}" 2>/dev/null) || continue
+        printf '%s\n' "$out" | write_atomic "$svg"
+    done
+    gtk-update-icon-cache -q -f -t "$ICONS_HICOLOR" 2>/dev/null || true
 }
 
 # Две строки в settings.json, по ключу, sed'ом: файл — JSONC, jq его не съест, а

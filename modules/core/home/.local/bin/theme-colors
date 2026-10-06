@@ -24,6 +24,9 @@
 #                          ~/.config/tmux/theme.conf, tmux.conf читает его ДО
 #                          плагина (см. theme-toggle refresh и modules/core/update)
 #   theme-colors swaylock — конфиг swaylock целиком; на диск (theme-toggle refresh)
+#   theme-colors telegram[-mute|-attention]
+#                        — монохромный значок Telegram для трея, SVG; на диск, в
+#                          тему иконок ~/.local/share/icons (theme-toggle refresh)
 #   theme-colors vscode  — имя темы VS Code; theme-toggle palette вписывает его
 #                          в settings.json
 #   theme-colors slack   — строка кастомной темы Slack; вставляется руками
@@ -450,7 +453,8 @@ emit_swaylock() {
 # явным dark): swaylock читает файл один раз при запуске, перекрасить живой
 # нечем, а замок и должен быть тёмным.
 
-ignore-empty-password
+# Без ignore-empty-password: пустой Enter — это «проверь палец» (pam_fprintd в
+# /etc/pam.d/swaylock, см. ~/.system-setup/fingerprint-swaylock.md).
 show-failed-attempts
 
 color=$base
@@ -489,6 +493,25 @@ text-clear-color=$text
 text-ver-color=$text
 text-wrong-color=$text
 EOF
+}
+
+emit_telegram() {
+    # Монохромный значок Telegram в трее, один из трёх вариантов: "" (обычный),
+    # mute, attention. Telegram отдаёт трею не картинку, а имя из темы иконок
+    # (org.telegram.desktop[-mute|-attention]-symbolic; и галка «Use monochrome
+    # icon» в его настройках появляется, только если такой значок в теме есть),
+    # а waybar рисует его как есть, не перекрашивая. Поэтому цвет запекается в SVG.
+    #
+    # Рисунок не свой: берётся из arm64-сборки, извлечённой из snap
+    # (~/.system-setup/telegram-arm64.md), в нём меняются три цвета — белый
+    # самолётик, серый бейдж mute, красный бейдж attention. Нет сборки — нет и
+    # значка: ошибка, refresh этот шаг пропускает.
+    local variant="$1"
+    local src="$HOME/.local/opt/telegram/app/usr/share/icons/hicolor/symbolic/apps/snap.telegram-desktop.${variant:+-$variant}-symbolic.svg"
+    [[ -r "$src" ]] || { echo "${0##*/}: нет исходного значка: $src" >&2; return 1; }
+    sed -e "s/#FFFFFF/${C[text]}/I" \
+        -e "s/#888888/${C[overlay1]}/I" \
+        -e "s/#f23c34/${C[red]}/I" "$src"
 }
 
 emit_vscode() {
@@ -542,11 +565,14 @@ case "$target" in
     btop)     emit_btop ;;
     tmux)     emit_tmux ;;
     swaylock) emit_swaylock ;;
+    telegram)           emit_telegram "" ;;
+    telegram-mute)      emit_telegram mute ;;
+    telegram-attention) emit_telegram attention ;;
     vscode)   emit_vscode ;;
     slack)    emit_slack ;;
     palette)  echo "$palette" ;;
     *)
-        echo "usage: ${0##*/} kitty|sway|css|btop|tmux|swaylock|vscode|slack|palette [dark|light] [catppuccin|nord]" >&2
+        echo "usage: ${0##*/} kitty|sway|css|btop|tmux|swaylock|telegram[-mute|-attention]|vscode|slack|palette [dark|light] [catppuccin|nord]" >&2
         exit 2
         ;;
 esac
