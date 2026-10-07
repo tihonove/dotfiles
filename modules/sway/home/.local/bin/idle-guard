@@ -54,8 +54,8 @@
 # своему дропину 10-x13s-lid.conf. Вечно бодрствующего ноутбука в рюкзаке не
 # получится. LID_SUSPEND_SEC=0 — инхибитор не берётся вовсе, всё как раньше.
 #
-# С внешним монитором (logind Docked=true) крышка ничего не делает, как и в
-# дропине: HandleLidSwitchDocked=ignore.
+# С внешним монитором (is_docked: подключённый коннектор или logind Docked)
+# крышка ничего не делает, как и в дропине: HandleLidSwitchDocked=ignore.
 #
 # Использование:
 #   idle-guard run          — главный цикл (его запускает idle-guard.service)
@@ -218,6 +218,24 @@ login1_bool() { # $1 свойство Manager у logind; успех, если tr
         org.freedesktop.login1.Manager "$1" 2>/dev/null)" = "b true" ]
 }
 
+# «Есть внешний монитор?» — свой ответ, а не logind Docked.
+#
+# МИНА: logind считает внешние дисплеи по атрибуту enabled коннектора, а
+# `output * power off` его сбрасывает. Погасили экран по простою — Docked=false,
+# lid_check решал «сняли монитор» и через минуту усыплял машину; после
+# пробуждения экран зажигался снова. Снаружи выглядело как «экран не гаснет».
+# Поэтому смотрим status=connected у любого не встроенного коннектора: он от
+# гашения не зависит. Docked от logind остаётся как запасной признак (док без
+# монитора).
+is_docked() {
+    local c
+    for c in /sys/class/drm/card*-*; do
+        case "${c##*/}" in *-eDP-*|*-LVDS-*|*-DSI-*) continue ;; esac
+        [ "$(read_or "$c/status" "")" = connected ] && return 0
+    done
+    login1_bool Docked
+}
+
 lid_timer_armed() { systemctl --user is-active --quiet "$LID_UNIT.timer"; }
 
 lid_disarm() {
@@ -243,7 +261,7 @@ lid_arm() { # $1 — секунды до сна
 cmd_lid_close() {
     load_config
     [ "$LID_SUSPEND_SEC" -gt 0 ] 2>/dev/null || return 0   # крышку ведёт logind
-    login1_bool Docked && return 0
+    is_docked && return 0
     do_lock || true
     do_screen_off || true
     lid_arm "$LID_SUSPEND_SEC"
@@ -258,7 +276,7 @@ cmd_lid_open() {
 lid_check() {
     [ "$LID_SUSPEND_SEC" -gt 0 ] 2>/dev/null || return 0
     login1_bool LidClosed || return 0
-    login1_bool Docked && return 0
+    is_docked && return 0
     lid_timer_armed && return 0
     log "крышка закрыта без таймера (проснулись или сняли монитор)"
     do_lock || true
@@ -405,7 +423,7 @@ cmd_status() {
     echo "конфиг:   $CONFIG_DIR/config$([ -r "$CONFIG_DIR/panel.conf" ] && echo ' + panel.conf')"
     local lid
     lid="$(login1_bool LidClosed && echo закрыта || echo открыта)"
-    login1_bool Docked && lid="$lid, внешний монитор"
+    is_docked && lid="$lid, внешний монитор"
     if [ "$LID_SUSPEND_SEC" -gt 0 ] 2>/dev/null; then
         echo "крышка:   $lid; сон через $LID_SUSPEND_SEC с, таймер $(lid_timer_armed && echo взведён || echo нет)"
     else
