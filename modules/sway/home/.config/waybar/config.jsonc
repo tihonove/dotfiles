@@ -35,7 +35,6 @@
         "group/slack",
         "tray",
         "custom/updates",
-        "idle_inhibitor",
         "pulseaudio",
         "custom/system",
         "custom/theme",
@@ -122,14 +121,6 @@
         "signal": 10,
         "tooltip": false,
         "on-click": "$HOME/.local/bin/ytm-bar next"
-    },
-
-    "idle_inhibitor": {
-        "format": "{icon}",
-        "format-icons": {
-            "activated": "",
-            "deactivated": ""
-        }
     },
 
     "tray": {

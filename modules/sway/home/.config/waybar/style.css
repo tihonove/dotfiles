@@ -94,7 +94,6 @@ button:hover {
 #custom-language,
 #tray,
 #mode,
-#idle_inhibitor,
 #scratchpad,
 #custom-theme,
 #custom-updates,
@@ -194,11 +193,9 @@ button:hover {
 #custom-updates,
 #custom-power            { color: @subtext0; }
 
-/* idle_inhibitor и немой звук — состояния, а не тревоги: отличаются яркостью
-   в пределах той же серой шкалы, а не цветом. Выключенное уходит в @overlay0 —
+/* Немой звук — состояние, а не тревога: отличается яркостью
+   в пределах той же серой шкалы, а не цветом. Выключенный уходит в @overlay0 —
    тот самый тон «неактивного», для которого он и предназначен. */
-#idle_inhibitor           { color: @overlay0; }
-#idle_inhibitor.activated { color: @text; }
 #pulseaudio.muted         { color: @overlay0; }
 
 /* Пульт ytm (group/ytm): ⏮ название ⏭. Тон тот же @subtext0, пауза уходит в
@@ -290,7 +287,7 @@ button:hover {
     animation-direction: alternate;
 }
 
-#tray                    { background-color: transparent; }
+#tray                    { background-color: transparent; padding-left: 4px; }
 
 #tray > .passive         { -gtk-icon-effect: dim; }
 
