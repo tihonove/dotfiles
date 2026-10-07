@@ -207,7 +207,28 @@ check_media_packages() {
     fi
 }
 
+# Пакеты под sway-overview (обзор столов по тапу $mod). Это python + GTK3 через
+# gi, а в requires проверяются только команды — модуль Python и typelib так не
+# проверишь. Без них бинд просто молча ничего не делает, поэтому проверка тут.
+# Спрашиваем самого python: он импортирует ровно то, что импортирует скрипт.
+check_overview_packages() {
+    echo "Пакеты для sway-overview..."
+    if python3 - <<'EOF' 2>/dev/null
+import gi
+gi.require_version("Gtk", "3.0")
+gi.require_version("GtkLayerShell", "0.1")
+from gi.repository import Gtk, GtkLayerShell
+EOF
+    then
+        echo "  ✅ на месте"
+    else
+        echo "  ⚠  не импортируется gi / Gtk 3 / GtkLayerShell"
+        echo "     sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-gtklayershell-0.1"
+    fi
+}
+
 install_satty
 register_browser_here
+check_overview_packages
 install_ytm
 check_media_packages
