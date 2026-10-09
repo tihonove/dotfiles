@@ -126,8 +126,9 @@ size = int(sys.argv[1])
 for line in sys.stdin:
     entry_id, out = line.rstrip("\n").split("\t", 1)
     try:
+        # id — через stdin, а не аргументом: см. decode() в самом скрипте.
         data = subprocess.run(
-            ["cliphist", "decode", entry_id],
+            ["cliphist", "decode"], input=f"{entry_id}\t\n".encode(),
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True,
         ).stdout
 
@@ -149,6 +150,16 @@ for line in sys.stdin:
         # просто покажется без превью.
         pass
 PY
+
+### Декодирование
+
+# id подаём через stdin в формате строки из `cliphist list` («id<TAB>превью»),
+# а не аргументом `cliphist decode <id>`. Аргумент появился только в 0.5, а в
+# Ubuntu лежит 0.4.0: там decode без stdin падает с «input not prefixed with
+# id». Форма через stdin работает в обеих версиях.
+decode() {
+    printf '%s\t\n' "$1" | cliphist decode
+}
 
 ### Пикер
 
@@ -220,11 +231,20 @@ picker() {
     idx=$(printf '%s\n' "${lines[@]}" | wofi --dmenu --conf "$WOFI_CONF") || exit 0
     [[ $idx =~ ^[0-9]+$ ]] || exit 0
 
-    id=${ids[idx]}
+    # Сначала во временный файл, и только при успехе — в wl-copy. Прямой пайп
+    # `cliphist decode | wl-copy` при ошибке decode кладёт в буфер ПУСТОТУ:
+    # wl-copy честно копирует пустой stdin, а set -e срабатывает уже после.
+    # Так оно и было на cliphist 0.4.0 — $mod+v не вставлял ничего и заодно
+    # затирал текущий буфер. Переменная вместо файла не годится: картинки
+    # содержат NUL, bash их обрежет.
+    local tmp
+    tmp=$(mktemp) || die "mktemp"
+    trap 'rm -f "$tmp"' EXIT
+    decode "${ids[idx]}" >"$tmp" || die "cliphist decode ${ids[idx]} не сработал"
     if [[ -n ${mimes[idx]} ]]; then
-        cliphist decode "$id" | wl-copy -t "${mimes[idx]}"
+        wl-copy -t "${mimes[idx]}" <"$tmp"
     else
-        cliphist decode "$id" | wl-copy
+        wl-copy <"$tmp"
     fi
 
     # Пикер только что закрылся, и sway ещё возвращает фокус прежнему окну.
