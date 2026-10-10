@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# Машинное состояние модуля diode: редактор по умолчанию для xdg-open (ссылка
+# на файл из Chrome, Telegram, portal'а). ~/.config/mimeapps.list в репу не
+# кладётся по той же причине, что в modules/sway/update: в него пишут сами
+# программы. Поэтому нужные строки в нём держит этот скрипт.
+#
+# Сам diode.desktop лежит в репе симлинком, а не пишется отсюда, как
+# browser-here.desktop: diode — пакет в /usr/bin, абсолютный путь в Exec не
+# нужен. Terminal=true — терминал выбирает GLib/xdg-open через
+# x-terminal-emulator (на этих машинах — kitty).
+#
+# Типы берутся из MimeType самого .desktop — список в одном месте. Явно, а не
+# только text/plain: GLib для подтипа спросит и родителя, а xdg-open под sway
+# (generic) смотрит в mimeapps.list ровно по тому типу, что у файла.
+#
+# Кто стоял до нас (fresh и т.п.) — перебиваем без вопросов: diode — редактор
+# по умолчанию, это и есть смысл модуля. Обратного хода нет намеренно: снимут
+# модуль — пропадёт симлинк на .desktop, и запись в mimeapps.list отбросится
+# сама, как у browser-here.
+
+set -euo pipefail
+
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/tools.sh"
+
+register_text_editor() {
+    echo "Редактор по умолчанию для текстовых файлов..."
+
+    local ours=diode.desktop
+    local desktop="${XDG_DATA_HOME:-$HOME/.local/share}/applications/$ours"
+
+    if ! have xdg-mime; then
+        echo "  xdg-mime нет (пакет xdg-utils) — пропускаю"
+        return 0
+    fi
+    if [[ ! -f "$desktop" ]]; then
+        echo "❌ нет $desktop — раскладка модуля не прошла?" >&2
+        return 1
+    fi
+
+    local types t changed=()
+    types=$(sed -n 's/^MimeType=//p' "$desktop" | tr ';' ' ')
+    for t in $types; do
+        [[ "$(xdg-mime query default "$t" 2>/dev/null)" == "$ours" ]] && continue
+        xdg-mime default "$ours" "$t"
+        changed+=("$t")
+    done
+
+    if (( ${#changed[@]} )); then
+        echo "  ✅ -> $ours: ${changed[*]}"
+    else
+        echo "  ✅ уже $ours"
+    fi
+}
+
+register_text_editor

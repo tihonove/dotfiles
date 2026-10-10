@@ -39,7 +39,7 @@ Payload разложен по модулям, чтобы база вставал
 | `kitty` | терминал, шрифты (`fontconfig`), `ssh.conf` для kitten ssh | `kitty` |
 | `sway` | сессия целиком: sway, waybar, wofi, kanshi, тема, мониторы, история буфера | `sway waybar wofi kanshi wtype cliphist jq` |
 | `devsy` | `~/.ssh/config` + установка CLI, настройка ssh-провайдера, скилы Клода про воркспейсы | — |
-| `diode` | `core.editor` для git, `diode-here` и скил Клода «открыть в diode»; сам редактор — из apt | `diode` |
+| `diode` | редактор по умолчанию везде (`$EDITOR`/`$VISUAL`, `core.editor` для git, `xdg-open` текстовых файлов), `diode-here` и скил Клода «открыть в diode»; сам редактор — из apt | `diode` |
 | `claude` | скилы Клода общего назначения: `uncommit` — коммиты ветки → правки в рабочей копии для ревью; `tsunami-ui` — дев-сервер фронта Tsunami из любого worktree nebo | — |
 
 Цель симлинка считается от пути **внутри `home/`**, а не от имени модуля.
@@ -552,9 +552,27 @@ curl -fsSL https://raw.githubusercontent.com/diode-editor/diode/main/install.sh 
 Это единственное, что в dotfiles ставится с sudo, и потому оно не в
 `modules/*/update`, а руками: скрипт без sudo может только напомнить (это
 делает миграция `0002-diode-from-apt`, пока пакетного `diode` в `PATH` нет).
-Модуль `diode` приносит только обвязку: `core.editor` для git, `diode-here` и
+Модуль `diode` приносит только обвязку: редактор по умолчанию, `diode-here` и
 скил Клода; `requires="diode"` — без редактора модуль выпадает из плана, а не
-ставит `core.editor`, ломающий `git commit` без `-m`.
+ставит `core.editor` и `$EDITOR`, ломающие `git commit` без `-m`, `crontab -e`
+и всё остальное.
+
+- **Редактор по умолчанию** — в трёх местах, потому что спрашивают его тремя
+  способами:
+  - `$EDITOR`/`$VISUAL` — `.config/bash/rc.d/editor.sh`: `crontab -e`,
+    `sudoedit`, `v` в `less`, Ctrl+G в Claude Code. В имени нет «vi», и это
+    важно для tmux (см. «tmux»: mode-keys там emacs);
+  - `core.editor` для git — `.config/git/diode.conf` (см. «git»). С `$EDITOR`
+    он дублируется, но git зовут и не из интерактивного шелла;
+  - `xdg-open` текстового файла (из Chrome, Telegram, portal'а) —
+    `.local/share/applications/diode.desktop` с `Terminal=true`: терминал
+    подбирает GLib/xdg-open через `x-terminal-emulator`, то есть kitty. Сам
+    `.desktop` — симлинк из репы: diode живёт в `/usr/bin`, абсолютный путь в
+    `Exec`, как у `browser-here.desktop`, не нужен. Дефолтом для mime-типов из
+    его `MimeType` его делает `modules/diode/update` — `mimeapps.list` машинный,
+    в него пишут сами программы. Кто стоял до этого (например, `fresh`),
+    перебивается без вопросов: в этом и смысл модуля. Снимут модуль — пропадёт
+    `.desktop`, и запись в `mimeapps.list` отбросится сама.
 
 - **Что было раньше.** До 2026-09 редактор ставил `modules/diode/update` в
   `~/.local/bin` из релиза `nightly` (версия — коммит, `nightly-984903a`).

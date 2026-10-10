@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=diode
+GenericName=Text Editor
+Comment=Текстовый файл — в diode в новом окне терминала
+TryExec=diode
+Exec=diode %F
+Terminal=true
+NoDisplay=true
+Categories=Development;TextEditor;Utility;
+MimeType=text/plain;text/markdown;text/x-log;text/csv;text/x-patch;text/x-diff;text/x-shellscript;application/x-shellscript;application/json;application/xml;text/xml;application/yaml;application/x-yaml;application/toml;text/css;text/javascript;application/javascript;application/x-typescript;text/x-typescript;text/x-python;text/x-script.python;application/x-python;text/x-csrc;text/x-chdr;text/x-c++src;text/x-c++hdr;text/x-rust;text/x-go;text/x-java;text/x-csharp;text/x-lua;text/x-ruby;text/x-php;text/x-makefile;text/x-cmake;
