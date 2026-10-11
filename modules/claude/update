@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Настройки Claude Code из modules/claude/settings.json — вмерживанием в
+# ~/.claude/settings.json, а не симлинком: в этот файл пишет сам claude (тема,
+# режимы, хуки плагинов), см. ensure_claude_lease в modules/core/update.
+#
+# Ключи фрагмента верхнего уровня заменяют свои значения в файле, permissions.allow
+# — объединяется (туда же пишут лиза и «Always allow» из диалога). Остальное в
+# файле не трогается. Модель по умолчанию в фрагмент не входит намеренно.
+
+set -euo pipefail
+
+command -v node >/dev/null 2>&1 || { echo "  ⚠️  claude: нет node, настройки не вмержены"; exit 0; }
+
+node - "$(dirname "${BASH_SOURCE[0]}")/settings.json" "$HOME/.claude/settings.json" <<'JS'
+const { existsSync, mkdirSync, readFileSync, writeFileSync } = require("node:fs");
+const path = require("node:path");
+
+const [fragmentFile, file] = process.argv.slice(2);
+const fragment = JSON.parse(readFileSync(fragmentFile, "utf8"));
+
+let settings = {};
+if (existsSync(file)) {
+    try {
+        settings = JSON.parse(readFileSync(file, "utf8"));
+    } catch {
+        console.log("  ⚠️  claude: " + file + " не парсится, настройки не вмержены");
+        process.exit(0);
+    }
+}
+
+const before = JSON.stringify(settings);
+for (const [key, value] of Object.entries(fragment)) {
+    if (key === "permissions") {
+        settings.permissions ??= {};
+        const allow = (settings.permissions.allow ??= []);
+        for (const rule of value.allow ?? []) if (!allow.includes(rule)) allow.push(rule);
+    } else {
+        settings[key] = value;
+    }
+}
+
+if (JSON.stringify(settings) !== before) {
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(settings, null, 2) + "\n");
+    console.log("  ✅ claude: настройки вмержены в " + file);
+} else {
+    console.log("  ✅ claude: настройки на месте");
+}
+JS
