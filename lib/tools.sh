@@ -28,8 +28,8 @@ arch_for() {
         rust:aarch64)  echo aarch64-unknown-linux-musl ;;
         rust:x86_64)   echo x86_64-unknown-linux-musl  ;;
         # GOARCH для x86_64 — amd64, «x64» в Go-мире не бывает вовсе. Ошибка не
-        # всплывала, потому что единственный потребитель (devsy) ставился только
-        # на aarch64, где вторая строка случайно верна.
+        # всплывала, потому что единственный потребитель (devsy, ныне снятый)
+        # ставился только на aarch64, где вторая строка случайно верна.
         go:aarch64)    echo linux-arm64 ;;
         go:x86_64)     echo linux-amd64 ;;
         plain:aarch64) echo arm64 ;;

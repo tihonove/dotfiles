@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# 2026-10-12. devsy больше не нужен: dev-окружение переехало в «питомца» в своём
+# k3s-кластере (StatefulSet с sshd, ходим обычным ssh). Модуль devsy ушёл из
+# репы коммитом, а ~/.ssh/config, который жил в нём, переехал в core. На машине
+# остаётся то, до чего коммит не дотягивается:
+#
+#   ~/.config/dotfiles/profile        строка «devsy» — модуля с таким именем нет
+#   ~/.claude/skills/devsy-*/SKILL.md битые симлинки в исчезнувший modules/devsy/
+#   ~/.local/bin/devsy                бинарник, ставил modules/devsy/update
+#
+# Сам ~/.ssh/config чинить не нужно: он симлинк, но указывает теперь «не туда»,
+# и install.sh перевешивает его на modules/core/ сам (статус relink).
+#
+# Чего миграция НЕ трогает, только напоминает: ~/.devsy (метаданные
+# воркспейсов), ~/.config/devsy-setup.conf и ~/.ssh/config.d/devsy.conf. Это не
+# раскладка, а машинные данные и инвентарь — снимать их решает человек.
+#
+# Контракт миграции — см. «Миграции» в install.sh: срабатывает по состоянию,
+# идемпотентна, при DOTFILES_DRY_RUN=1 только рассказывает. Молчит, когда чинить
+# нечего, — то есть на свежей машине и на любом повторном запуске (кроме
+# напоминания, пока остатки devsy на месте).
+
+set -euo pipefail
+
+PROFILE="${DOTFILES_PROFILE:-${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/profile}"
+HOME_DIR="${DOTFILES_HOME:-$HOME}"
+DOTFILES_DIR="${DOTFILES_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+DRY_RUN="${DOTFILES_DRY_RUN:-0}"
+
+# 1. Профиль: строку devsy убираем. `|| true` — grep возвращает 1, если не
+#    осталось ни строки.
+if [[ -f "$PROFILE" ]] && grep -qxF devsy "$PROFILE"; then
+    if ((DRY_RUN)); then
+        echo "профиль: убрал бы строку devsy (не тронут, --dry-run)"
+    else
+        new="$(grep -vxF devsy "$PROFILE" || true)"
+        printf '%s\n' "$new" > "$PROFILE.tmp.$$"
+        mv "$PROFILE.tmp.$$" "$PROFILE"
+        echo "профиль: строка devsy убрана"
+    fi
+fi
+
+# 2. Скилы Клода. Снимаем только СВОИ симлинки — цель обязана вести в
+#    modules/devsy/ этой репы; каталог скила убираем, только если он опустел.
+for link in "$HOME_DIR"/.claude/skills/devsy-*/SKILL.md; do
+    [[ -L "$link" && "$(readlink -- "$link")" == "$DOTFILES_DIR/modules/devsy/"* ]] || continue
+    dir="${link%/SKILL.md}"
+    if ((DRY_RUN)); then
+        echo "снял бы битый симлинк ~/${link#"$HOME_DIR"/}"
+    else
+        rm -- "$link"
+        rmdir -- "$dir" 2>/dev/null || true
+        echo "снят битый симлинк ~/${link#"$HOME_DIR"/}"
+    fi
+done
+
+# 3. Бинарник. Заменять его нечем и незачем, так что убираем без условий.
+if [[ -e "$HOME_DIR/.local/bin/devsy" ]]; then
+    if ((DRY_RUN)); then
+        echo "убрал бы ~/.local/bin/devsy"
+    else
+        rm -f -- "$HOME_DIR/.local/bin/devsy"
+        echo "убран ~/.local/bin/devsy"
+    fi
+fi
+
+# 4. Остатки, которые не наши. Только перечисляем.
+declare -a left=()
+for p in .devsy .config/devsy-setup.conf .ssh/config.d/devsy.conf; do
+    [[ -e "$HOME_DIR/$p" ]] && left+=("~/$p")
+done
+if ((${#left[@]})); then
+    echo "от devsy остались (не тронуты, это данные, а не раскладка): ${left[*]}"
+fi
