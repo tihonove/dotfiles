@@ -227,8 +227,53 @@ EOF
     fi
 }
 
+# Ссылки из окон приложений Chrome (Slack — PWA) мимо xdg-open: клик там Chrome
+# обрабатывает сам. Их перехватывает расширение chrome-extension/ рядом и через
+# native messaging отдаёт в browser-here-native-host. Здесь — манифест хоста:
+# путь в нём тоже обязан быть абсолютным, отсюда генерация, а не симлинк.
+#
+# Само расширение ставится руками и один раз: chrome://extensions → Developer
+# mode → Load unpacked → этот каталог chrome-extension. Флаг --load-extension
+# в фирменном Chrome больше не работает. ID расширения закреплён ключом в
+# manifest.json, поэтому allowed_origins ниже от машины не зависит.
+register_browser_here_host() {
+    echo "Native host browser-here для Chrome..."
+
+    local dir="${XDG_CONFIG_HOME:-$HOME/.config}/google-chrome/NativeMessagingHosts"
+    local file="$dir/dev.tihonove.browser_here.json"
+    local bin="$BIN_DIR/browser-here-native-host"
+    local ext_id=fodjciajkeljkcjoajdfcambnikacpba
+
+    if [[ ! -x "$bin" ]]; then
+        echo "❌ нет $bin — раскладка модуля не прошла?" >&2
+        return 1
+    fi
+
+    local entry
+    entry=$(cat <<EOF
+{
+  "name": "dev.tihonove.browser_here",
+  "description": "Ссылки из окон приложений Chrome — в browser-here",
+  "path": "$bin",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://$ext_id/"]
+}
+EOF
+)
+    if [[ -f "$file" && "$(cat "$file")" == "$entry" ]]; then
+        echo "  ✅ уже на месте"
+    else
+        mkdir -p "$dir"
+        printf '%s\n' "$entry" > "$file"
+        echo "  ✅ записан $file"
+    fi
+    echo "  расширение — руками: chrome://extensions → Load unpacked →"
+    echo "  $(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/chrome-extension"
+}
+
 install_satty
 register_browser_here
+register_browser_here_host
 check_overview_packages
 install_ytm
 check_media_packages

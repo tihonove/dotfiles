@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "browser-here",
+  "version": "1.0",
+  "description": "Ссылки из окон приложений Chrome (Slack) — в browser-here, то есть в Chrome на текущем столе sway",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzZ1R+FjdWLqpyj9pPBlQ/Iz7dbtQPW37B4tN6pnLV/YJkjHOR6yWSj9BmmEcAg1ywiEjgXtW5pcBHN99+vRezW4FJHAEYloUQlLToKssUvxR9Ywuol+YPZvCVBSkxA/vRmwz5E0thb+meT0xgf7poFCSJDfcYfAGAZVWTgTDCziQrxCJfCi6ddrT7qkq/T8UtRB+ewJO8kZ+3+3Ekqpxt8GTtC9HsG+tpJuBBk7sTamHL2IQ4twAtbs/HCwmQ157FVa/kk6cW3RCU2dJQ26304kw8LDA/UQYzNAvW5zvjpBrLKu8otLBkDzZd4CqIc29O51IvhW0NMZnus3vlEkmJwIDAQAB",
+  "permissions": ["nativeMessaging"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["content.js"],
+    "run_at": "document_start"
+  }]
+}

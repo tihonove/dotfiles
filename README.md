@@ -651,8 +651,12 @@ curl -fsSL https://raw.githubusercontent.com/diode-editor/diode/main/install.sh 
   следом уносит туда. Поэтому браузером по умолчанию стоит обёртка
   `.local/bin/browser-here` (как она выбирает окно — в её шапке); `.desktop` для
   неё пишет и регистрирует `modules/sway/update`, и только если до этого по
-  умолчанию стоял Chrome. Не ловит ссылки из PWA (Slack): те через `xdg-open`
-  не идут вовсе
+  умолчанию стоял Chrome. Ссылки из PWA (Slack) через `xdg-open` не идут вовсе:
+  их ловит расширение `modules/sway/chrome-extension` (клик по внешней ссылке в
+  окне приложения) и через native host `.local/bin/browser-here-native-host`
+  отдаёт той же обёртке. Манифест хоста пишет `modules/sway/update`, само
+  расширение ставится руками один раз: `chrome://extensions` → Developer mode →
+  Load unpacked → этот каталог
 - **тема** — палитра и светлая/тёмная переключаются для всей сессии разом,
   скрипты `.local/bin/theme-toggle` и `theme-colors`. Подробности ниже
 - **мониторы** — `$mod+P`, скрипт `.local/bin/display-setup`, профили в

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Native messaging host для расширения modules/sway/chrome-extension: получает от
+# него {"url": ...} и отдаёт ссылку в browser-here. Манифест хоста с абсолютным
+# путём сюда пишет modules/sway/update.
+#
+# Протокол Chrome: сообщение — 4 байта длины (native endian, у нас little) и
+# JSON, ответ в том же виде. Один запрос на запуск: sendNativeMessage ждёт
+# ответа и закрывает канал.
+
+set -euo pipefail
+
+len=$(head -c 4 | od -An -tu4 | tr -d ' ')
+url=$(head -c "$len" | jq -r '.url // empty')
+
+reply() {
+    local msg=$1
+    # Длина — 4 байта little-endian через printf с \x-экранами.
+    printf "$(printf '\\x%02x\\x%02x\\x%02x\\x%02x' \
+        $(( ${#msg} & 255 )) $(( ${#msg} >> 8 & 255 )) \
+        $(( ${#msg} >> 16 & 255 )) $(( ${#msg} >> 24 & 255 )))"
+    printf '%s' "$msg"
+}
+
+here="$(dirname "$(readlink -f "$0")")/browser-here"
+
+# Нет browser-here — отказ, и расширение откроет ссылку само, как раньше.
+if [[ ! $url =~ ^https?:// || ! -x $here ]]; then
+    reply '{"ok":false}'
+    exit 1
+fi
+
+# Отцепленно: Chrome гасит хост, как только получил ответ, и browser-here не
+# должен уйти вместе с ним. Вывод — мимо stdout, он у хоста только для протокола.
+setsid -f "$here" "$url" </dev/null >/dev/null 2>&1
+reply '{"ok":true}'
