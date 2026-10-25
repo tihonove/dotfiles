@@ -1,55 +1,55 @@
 #!/usr/bin/env bash
-# Палитра сессии. Две оси, независимые друг от друга:
+# Session palette. Two independent axes:
 #
-#   палитра — catppuccin (Mocha/Latte) или nord; выбирается на машину файлом
-#             ~/.config/dotfiles/palette, пишет его `theme-toggle palette`;
-#   режим   — тёмный/светлый; gsettings, переключает `theme-toggle`.
+#   palette — catppuccin (Mocha/Latte) or nord; chosen per machine by the file
+#             ~/.config/dotfiles/palette, written by `theme-toggle palette`;
+#   mode    — dark/light; gsettings, switched by `theme-toggle`.
 #
-# Единственное место, где лежат сами цвета. Скрипт смотрит, какая палитра и
-# какой режим стоят сейчас, и печатает готовый кусок конфига для запрошенного
-# потребителя:
+# The only place where the colors themselves live. The script looks at which
+# palette and mode are active right now and prints a ready-made config snippet
+# for the requested consumer:
 #
-#   theme-colors kitty   — строки kitty.conf; kitty зовёт скрипт сам, через
-#                          `geninclude theme.sh` (обёртка нужна, потому что
-#                          geninclude вызывает программу без аргументов)
-#   theme-colors sway    — команды client.*/output; theme-toggle refresh скармливает
-#                          их swaymsg построчно, живому sway, без reload
-#   theme-colors css     — блок @define-color для waybar и wofi; у GTK-CSS
-#                          генератора нет, поэтому результат ложится на диск
-#                          файлом (см. theme-toggle refresh)
-#   theme-colors btop    — файл .theme для btop; тоже на диск, по фиксированному
-#                          пути ~/.config/btop/themes/catppuccin.theme, на который
-#                          ссылается btop.conf (см. theme-toggle refresh)
-#   theme-colors tmux    — @thm_* для плагина catppuccin; на диск, в
-#                          ~/.config/tmux/theme.conf, tmux.conf читает его ДО
-#                          плагина (см. theme-toggle refresh и modules/core/update)
-#   theme-colors swaylock — конфиг swaylock целиком; на диск (theme-toggle refresh)
+#   theme-colors kitty   — kitty.conf lines; kitty calls the script itself, via
+#                          `geninclude theme.sh` (the wrapper is needed because
+#                          geninclude runs the program without arguments)
+#   theme-colors sway    — client.*/output commands; theme-toggle refresh feeds
+#                          them to swaymsg line by line, into the live sway, no reload
+#   theme-colors css     — a @define-color block for waybar and wofi; GTK-CSS has
+#                          no generators, so the result lands on disk as a file
+#                          (see theme-toggle refresh)
+#   theme-colors btop    — a .theme file for btop; also on disk, at the fixed path
+#                          ~/.config/btop/themes/catppuccin.theme referenced by
+#                          btop.conf (see theme-toggle refresh)
+#   theme-colors tmux    — @thm_* for the catppuccin plugin; on disk, in
+#                          ~/.config/tmux/theme.conf, tmux.conf reads it BEFORE
+#                          the plugin (see theme-toggle refresh and modules/core/update)
+#   theme-colors swaylock — the whole swaylock config; on disk (theme-toggle refresh)
 #   theme-colors telegram[-mute|-attention]
-#                        — монохромный значок Telegram для трея, SVG; на диск, в
-#                          тему иконок ~/.local/share/icons (theme-toggle refresh)
-#   theme-colors vscode  — имя темы VS Code; theme-toggle palette вписывает его
-#                          в settings.json
-#   theme-colors slack   — строка кастомной темы Slack; вставляется руками
-#   theme-colors palette — имя текущей палитры (для theme-toggle)
+#                        — monochrome Telegram tray icon, SVG; on disk, into the
+#                          icon theme ~/.local/share/icons (theme-toggle refresh)
+#   theme-colors vscode  — VS Code theme name; theme-toggle palette writes it
+#                          into settings.json
+#   theme-colors slack   — Slack custom theme string; pasted by hand
+#   theme-colors palette — current palette name (for theme-toggle)
 #
-# Вторым и третьим аргументами можно задать режим и палитру явно — удобно, чтобы
-# сравнить два вывода, не переключая сессию:
+# The second and third arguments set mode and palette explicitly — handy for
+# comparing two outputs without switching the session:
 # `diff <(theme-colors css dark catppuccin) <(theme-colors css dark nord)`.
 #
-# Значения Latte сняты с upstream: kitten themes --dump-theme Catppuccin-Latte.
-# Значения Nord — с nordtheme.com; раскладка по ANSI-16 сверена с
+# Latte values are taken from upstream: kitten themes --dump-theme Catppuccin-Latte.
+# Nord values are from nordtheme.com; the ANSI-16 mapping is checked against
 # kitten themes --dump-theme Nord.
 
 set -euo pipefail
 
-# ── Палитры ───────────────────────────────────────────────────────────────────
-# Роли одинаковые в обеих, отличаются только значения. Всё, что ниже, обращается
-# к цветам ТОЛЬКО по имени роли — так светлая тема получается переносом один в
-# один, без ручного подбора.
+# ── Palettes ──────────────────────────────────────────────────────────────────
+# The roles are the same in all of them, only the values differ. Everything below
+# refers to colors ONLY by role name — that way the light theme is a one-to-one
+# swap, with no hand-picking.
 #
-# Порядок ролей — от акцентов к фонам, как в оригинальной палитре Catppuccin:
-# base — фон, mantle/crust — на тон глубже (в Latte, наоборот, светлее),
-# surface* — плашки, overlay* — приглушённый текст, subtext*/text — текст.
+# Role order goes from accents to backgrounds, as in the original Catppuccin palette:
+# base — background, mantle/crust — a shade deeper (in Latte, lighter instead),
+# surface* — tiles, overlay* — muted text, subtext*/text — text.
 
 declare -A MOCHA=(
     [rosewater]=#f5e0dc [flamingo]=#f2cdcd [pink]=#f5c2e7  [mauve]=#cba6f7
@@ -73,29 +73,29 @@ declare -A LATTE=(
     [base]=#eff1f5      [mantle]=#e6e9ef   [crust]=#dce0e8
 )
 
-# Nord в ролях Catppuccin. У Nord 16 цветов против 26 ролей, поэтому часть ролей
-# схлопывается в одно значение — это нормально, потребители различают роли, а
-# не значения. Где выбор был неочевиден:
+# Nord in Catppuccin roles. Nord has 16 colors against 26 roles, so some roles
+# collapse into one value — that's fine, consumers distinguish roles, not
+# values. Where the choice wasn't obvious:
 #
-#   base/mantle/crust — у Nord нет ничего темнее nord0, «на тон глубже» в нём
-#                       идёт светлее (kitty в родной теме Nord красит полосу
-#                       вкладок nord1). Поэтому mantle и crust = nord1, а не
-#                       ещё один nord0. crust ещё и текст на акцентах — nord1
-#                       там же, где у upstream-темы kitty;
-#   text/subtext      — Snow Storm светлеет от nord4 к nord6, а не тускнеет,
-#                       так что «приглушённый» текст выходит чуть ярче
-#                       основного. Зато ANSI white/bright white совпадают с
-#                       родной темой kitty (nord5/nord6), а fg — nord4, как везде;
-#   overlay           — nord3 и его осветлённый вариант #616e88 (так Nord красит
-#                       комментарии в редакторах; чистый nord3 для них тёмен);
-#   blue/lavender     — nord9 рамка, nord8 индикатор: по гайду Nord nord8 — главный
-#                       акцент интерфейса, nord9 — второстепенный;
-#   pink/mauve        — оба nord15, другого пурпурного у Nord нет;
-#   rosewater         — nord4: это курсор и выделение, у родной темы kitty курсор
-#                       тоже nord4. Выделение получается инверсным, зато читается.
+#   base/mantle/crust — Nord has nothing darker than nord0, "a shade deeper" in it
+#                       goes lighter (kitty's native Nord theme paints the tab
+#                       bar nord1). So mantle and crust = nord1, not yet another
+#                       nord0. crust is also the text on accents — nord1, same
+#                       as the upstream kitty theme;
+#   text/subtext      — Snow Storm gets lighter from nord4 to nord6 instead of
+#                       dimmer, so "muted" text comes out slightly brighter than
+#                       the main one. In exchange ANSI white/bright white match
+#                       kitty's native theme (nord5/nord6), and fg is nord4, as everywhere;
+#   overlay           — nord3 and its lightened variant #616e88 (that's how Nord
+#                       colors comments in editors; plain nord3 is too dark for them);
+#   blue/lavender     — nord9 border, nord8 indicator: per the Nord guide nord8 is the
+#                       primary UI accent, nord9 the secondary one;
+#   pink/mauve        — both nord15, Nord has no other purple;
+#   rosewater         — nord4: it's the cursor and selection, kitty's native theme
+#                       also has a nord4 cursor. Selection ends up inverted, but readable.
 #
-# Светлого Nord нет: авторы его не рисовали, а Aurora на светлом фоне не
-# читается. Светлый режим при палитре nord — Latte (см. разбор аргументов).
+# There's no light Nord: its authors never drew one, and Aurora is unreadable on
+# a light background. Light mode with the nord palette is Latte (see argument parsing).
 
 declare -A NORD=(
     [rosewater]=#d8dee9 [flamingo]=#d08770 [pink]=#b48ead  [mauve]=#b48ead
@@ -108,65 +108,65 @@ declare -A NORD=(
     [base]=#2e3440      [mantle]=#3b4252   [crust]=#3b4252
 )
 
-# Порядок ролей для вывода css — руками, а не по ключам массива: у ассоциативных
-# массивов bash порядок хэшевый, а файл читают глазами.
+# Role order for css output — by hand, not by array keys: bash associative
+# arrays are ordered by hash, and the file is read by humans.
 ROLES=(
     rosewater flamingo pink mauve red maroon peach yellow green teal sky sapphire
     blue lavender text subtext1 subtext0 overlay2 overlay1 overlay0
     surface2 surface1 surface0 base mantle crust
 )
 
-# ── Текущая тема ──────────────────────────────────────────────────────────────
-# Источник правды — тот же ключ, что ставит theme-toggle. Читаем его напрямую, а
-# не через `theme-toggle get`: скрипты не должны звать друг друга по кругу.
+# ── Current theme ─────────────────────────────────────────────────────────────
+# The source of truth is the same key theme-toggle sets. Read it directly, not
+# via `theme-toggle get`: scripts shouldn't call each other in circles.
 #
-# Спрашиваем по очереди, от самого осведомлённого источника к самому общему:
+# Ask in turn, from the best-informed source to the most generic:
 #
-#   1. gsettings — сессия рабочей станции, единственное место, где тему реально
-#      выбирал человек;
-#   2. терминал — на удалённой машине и в контейнере gsettings ответить не может,
-#      зато btop там рисуется в НАШЕМ терминале, а тот знает свой фон;
-#   3. dark — если не ответил никто.
+#   1. gsettings — the workstation session, the only place where a human actually
+#      chose the theme;
+#   2. terminal — on a remote machine or in a container gsettings can't answer,
+#      but btop is drawn there in OUR terminal, and it knows its background;
+#   3. dark — if nobody answered.
 #
-# Раньше шага 2 не было, и всё, кроме внятного prefer-dark, считалось светлой
-# темой. На удалённой машине это давало белый btop посреди тёмной сессии: на
-# tihonove-ivm gsettings установлен, но отвечает «No schemas installed», а
-# modules/core/update печёт из этого ответа файл темы.
+# Step 2 used to be missing, and anything other than a clear prefer-dark counted
+# as the light theme. On a remote machine that gave a white btop in the middle of
+# a dark session: on tihonove-ivm gsettings is installed but answers "No schemas
+# installed", and modules/core/update bakes the theme file from that answer.
 
-# Фон терминала через OSC 11. Запрос уходит и ответ читается на /dev/tty, а не на
-# stdin/stdout: вывод у скрипта перенаправлен почти всегда (`theme-colors btop >
-# themes/catppuccin.theme`), спрашивать надо именно терминал.
+# Terminal background via OSC 11. The query is sent and the reply read on
+# /dev/tty, not stdin/stdout: the script's output is almost always redirected
+# (`theme-colors btop > themes/catppuccin.theme`), it's the terminal we must ask.
 #
-# Терминатор запроса — BEL, и ответ приходит с тем же терминатором, каким его
-# спросили (так делают и xterm, и kitty). Если ответ всё же придёт с ST (ESC \),
-# read дождётся таймаута, но прочитанное в переменной останется — регулярка
-# разберёт и такой ответ.
+# The query terminator is BEL, and the reply comes with the same terminator it
+# was asked with (both xterm and kitty do this). If the reply does come with ST
+# (ESC \), read waits for the timeout, but what was read stays in the variable —
+# the regex parses that reply too.
 #
-# Чего это стоит: на время запроса терминал переводится в raw без эха, то есть
-# нажатия, сделанные ровно в эти миллисекунды, съедаются вместе с ответом. Шаг
-# доходит до сюда только там, где gsettings молчать не перестанет (удалённая
-# машина, контейнер), и стоит либо один обмен пакетами, либо 0.3 с, если терминал
-# запрос не понял. На рабочей станции этот код не выполняется вовсе.
+# What it costs: for the duration of the query the terminal is put into raw with
+# no echo, so keystrokes made in exactly those milliseconds are eaten along with
+# the reply. This step is only reached where gsettings won't stop being silent
+# (remote machine, container), and costs either one round trip or 0.3 s if the
+# terminal didn't understand the query. On the workstation this code never runs.
 terminal_bg_mode() {
     local reply saved r g b len max lum
 
-    # Скобки не лишние: у голого `exec 3<>/dev/tty 2>/dev/null` редиректы
-    # применяются по порядку, и ошибка открытия /dev/tty печатается ДО того, как
-    # stderr уйдёт в /dev/null. Без терминала (update.sh по ssh без -t) это
-    # давало «/dev/tty: No such device or address» на каждый вызов.
+    # The braces aren't redundant: with a bare `exec 3<>/dev/tty 2>/dev/null` the
+    # redirections apply in order, and the error opening /dev/tty is printed
+    # BEFORE stderr goes to /dev/null. Without a terminal (update.sh over ssh
+    # without -t) that gave "/dev/tty: No such device or address" on every call.
     { exec 3<>/dev/tty; } 2>/dev/null || return 1
     saved=$(stty -g <&3 2>/dev/null) || { exec 3>&- ; return 1; }
 
-    # raw -echo: ответ терминала не должен ни отобразиться, ни ждать перевода
-    # строки. Возвращаем режим сразу после чтения, до любого разбора.
+    # raw -echo: the terminal's reply must neither be displayed nor wait for a
+    # newline. Restore the mode right after reading, before any parsing.
     stty raw -echo <&3 2>/dev/null || { exec 3>&- ; return 1; }
     printf '\033]11;?\007' >&3
     IFS= read -r -d $'\a' -t 0.3 reply <&3 || true
     stty "$saved" <&3 2>/dev/null || true
     exec 3>&-
 
-    # rgb:RRRR/GGGG/BBBB, но разрядность компонента по стандарту от 1 до 4 знаков,
-    # поэтому нормируем по максимуму для своей длины, а не делим на 257.
+    # rgb:RRRR/GGGG/BBBB, but per the spec a component has 1 to 4 digits, so
+    # normalize by the maximum for its length instead of dividing by 257.
     [[ "$reply" =~ rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+) ]] || return 1
     len=${#BASH_REMATCH[1]}
     max=$(( 16 ** len - 1 ))
@@ -174,9 +174,9 @@ terminal_bg_mode() {
     g=$(( 16#${BASH_REMATCH[2]} * 255 / max ))
     b=$(( 16#${BASH_REMATCH[3]} * 255 / max ))
 
-    # Яркость с весами Rec. 709, целочисленно. Гамму не разворачиваем: тут нужен
-    # не точный расчёт, а сторона от середины, а запас огромный — Mocha даёт 31,
-    # Latte 240 из 255.
+    # Luminance with Rec. 709 weights, in integers. No gamma decoding: what's
+    # needed isn't a precise value but which side of the middle, and the margin is
+    # huge — Mocha gives 31, Latte 240 out of 255.
     lum=$(( (2126 * r + 7152 * g + 722 * b) / 10000 ))
     (( lum < 128 )) && echo dark || echo light
 }
@@ -184,14 +184,14 @@ terminal_bg_mode() {
 current_mode() {
     local gs from_tty
 
-    # gsettings может быть установлен и при этом не иметь схем — тогда он пишет
-    # в stderr и выходит с ошибкой. Поэтому смотрим на код возврата, а не только
-    # на текст: непустой мусор в выводе не должен сойти за ответ.
+    # gsettings can be installed and still have no schemas — then it writes to
+    # stderr and exits with an error. So look at the exit code, not just the
+    # text: non-empty garbage in the output must not pass for an answer.
     if gs=$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null); then
         case "$gs" in
             *prefer-dark*)  echo dark;  return ;;
-            # 'default' — это «предпочтения нет», и весь остальной стек трактует
-            # его как светлую тему; оставляем как было.
+            # 'default' means "no preference", and the rest of the stack treats
+            # it as the light theme; keep it that way.
             *prefer-light*|*default*) echo light; return ;;
         esac
     fi
@@ -204,15 +204,16 @@ current_mode() {
     echo dark
 }
 
-# ── Текущая палитра ───────────────────────────────────────────────────────────
-# Файл вне репы, по той же конвенции, что ~/.config/dotfiles/profile: какая
-# палитра на этой машине — вещь машинная. Нет файла — catppuccin: так сессия
-# выглядела до появления второй оси, и так она выглядит везде, где палитру не
-# выбирали. Формат — одно слово, `#`-комментарии и пустые строки игнорируются.
+# ── Current palette ───────────────────────────────────────────────────────────
+# A file outside the repo, by the same convention as ~/.config/dotfiles/profile:
+# which palette a machine uses is a per-machine thing. No file — catppuccin: that's
+# how the session looked before the second axis appeared, and how it looks
+# wherever no palette was chosen. Format: one word, `#` comments and blank lines
+# are ignored.
 #
-# Через ssh палитра не передаётся: терминал по OSC 11 отдаёт только фон, по
-# нему различима яркость, но не палитра. На удалённой машине палитру задают
-# тем же файлом, руками.
+# The palette isn't passed over ssh: via OSC 11 the terminal only reports its
+# background, which tells brightness but not the palette. On a remote machine the
+# palette is set by the same file, by hand.
 PALETTE_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/palette"
 
 current_palette() {
@@ -222,13 +223,13 @@ current_palette() {
     echo "${p:-catppuccin}"
 }
 
-# ── Вывод ─────────────────────────────────────────────────────────────────────
+# ── Output ────────────────────────────────────────────────────────────────────
 
 emit_kitty() {
-    # Чёрный и белый из ANSI-16 — единственное место, где две темы расходятся не
-    # значениями, а ролями. В тёмной «чёрный» берётся из плашек (surface), а
-    # «белый» из текста (subtext); в светлой ровно наоборот, иначе ANSI-чёрный
-    # оказался бы светлее фона. Так же это сделано в обеих upstream-темах.
+    # ANSI-16 black and white are the only place where the two themes differ not
+    # in values but in roles. In dark, "black" comes from the tiles (surface) and
+    # "white" from the text (subtext); in light it's exactly the reverse, otherwise
+    # ANSI black would be lighter than the background. Both upstream themes do the same.
     local ansi_black ansi_black_br ansi_white ansi_white_br
     if [[ "$mode" == dark ]]; then
         ansi_black=${C[surface1]}  ansi_black_br=${C[surface2]}
@@ -239,33 +240,33 @@ emit_kitty() {
     fi
 
     cat <<EOF
-# ${theme_name}. Сгенерировано theme-colors, руками не править.
+# ${theme_name}. Generated by theme-colors, do not edit by hand.
 
 foreground              ${C[text]}
 background              ${C[base]}
 selection_foreground    ${C[base]}
 selection_background    ${C[rosewater]}
 
-# Курсор
+# Cursor
 cursor                  ${C[rosewater]}
 cursor_text_color       ${C[base]}
 
-# Ссылка под мышью
+# Link under the mouse
 url_color               ${C[rosewater]}
 
-# Рамки окон kitty
+# kitty window borders
 active_border_color     ${C[lavender]}
 inactive_border_color   ${C[overlay0]}
 bell_border_color       ${C[yellow]}
 
-# Полоса вкладок
+# Tab bar
 active_tab_foreground   ${C[crust]}
 active_tab_background   ${C[mauve]}
 inactive_tab_foreground ${C[text]}
 inactive_tab_background ${C[mantle]}
 tab_bar_background      ${C[crust]}
 
-# 16 цветов терминала
+# 16 terminal colors
 # black
 color0  $ansi_black
 color8  $ansi_black_br
@@ -294,11 +295,11 @@ EOF
 }
 
 emit_sway() {
-    # Ровно те же строки, что лежат в конфиге sway дефолтом, но с текущей
-    # палитрой. Комментариев и пустых строк тут нет намеренно: вывод построчно
-    # уходит в swaymsg, а он ждёт команды, а не конфиг.
+    # Exactly the same lines as in the sway config's defaults, but with the
+    # current palette. No comments or blank lines here on purpose: the output goes
+    # line by line to swaymsg, which expects commands, not a config.
     #
-    # Порядок полей client.*: border | background | text | indicator | child_border
+    # client.* field order: border | background | text | indicator | child_border
     cat <<EOF
 client.focused          ${C[blue]} ${C[base]} ${C[text]} ${C[lavender]} ${C[blue]}
 client.focused_inactive ${C[surface1]} ${C[base]} ${C[subtext0]} ${C[surface1]} ${C[surface1]}
@@ -311,12 +312,11 @@ EOF
 }
 
 emit_css() {
-    # Один и тот же файл подходит и waybar, и wofi: оба на GTK-CSS и оба
-    # обращаются к цветам через @имя-роли. Отдаём палитру целиком, а не только
-    # используемые роли, — чтобы в style.css можно было взять любой цвет, не
-    # трогая генератор.
-    echo "/* ${theme_name}. Сгенерировано theme-colors, руками не править."
-    echo "   Файл перезаписывает theme-toggle refresh; в git его нет. */"
+    # The same file works for both waybar and wofi: both use GTK-CSS and both
+    # refer to colors via @role-name. Emit the whole palette, not just the roles
+    # in use, so that style.css can take any color without touching the generator.
+    echo "/* ${theme_name}. Generated by theme-colors, do not edit by hand."
+    echo "   Overwritten by theme-toggle refresh; not in git. */"
     local role
     for role in "${ROLES[@]}"; do
         printf '@define-color %-10s %s;\n' "$role" "${C[$role]}"
@@ -324,46 +324,46 @@ emit_css() {
 }
 
 emit_btop() {
-    # Формат темы btop — присваивания в ассоциативный массив theme[...].
-    # Ключей около сорока, но половина из них — тройки start/mid/end: каждый
-    # график и каждый индикатор в btop красится градиентом по высоте столбика.
-    # Где градиент не нужен, mid и end оставляются пустыми — тогда цвет один.
+    # btop theme format — assignments into the associative array theme[...].
+    # About forty keys, but half of them are start/mid/end triples: every graph
+    # and every meter in btop is painted with a gradient along the bar height.
+    # Where no gradient is needed, mid and end are left empty — one color then.
     #
-    # Роли расставлены так, чтобы цвет НЁС смысл, а не просто попадал в палитру:
+    # Roles are assigned so that color CARRIES meaning, not just fits the palette:
     #
-    #   рамки боксов  — четыре разных акцента, чтобы четыре области взгляд
-    #                   различал по цвету, а не по чтению заголовков;
-    #   температуры   — green→yellow→red, единственный градиент, который читается
-    #   и загрузка cpu  однозначно: выше столбик — тревожнее цвет;
-    #   память и сеть — градиенты в холодных тонах, тут высота столбика сама по
-    #                   себе не «плохо», и красный сбивал бы с толку.
+    #   box borders   — four different accents, so the eye tells the four areas
+    #                   apart by color, not by reading the titles;
+    #   temperatures  — green→yellow→red, the only gradient that reads
+    #   and cpu load    unambiguously: higher bar — more alarming color;
+    #   memory and    — gradients in cool tones, here a tall bar isn't "bad" by
+    #   network         itself, and red would be misleading.
     cat <<EOF
-# ${theme_name}. Сгенерировано theme-colors, руками не править.
+# ${theme_name}. Generated by theme-colors, do not edit by hand.
 
-# Фон и текст
+# Background and text
 theme[main_bg]="${C[base]}"
 theme[main_fg]="${C[text]}"
 theme[title]="${C[text]}"
 theme[hi_fg]="${C[blue]}"
 theme[inactive_fg]="${C[overlay0]}"
 
-# Выделенная строка в списке процессов
+# Selected row in the process list
 theme[selected_bg]="${C[surface1]}"
 theme[selected_fg]="${C[text]}"
 
-# Подписи на графиках, подложка индикаторов, мелочь в боксе процессов
+# Graph labels, meter background, misc in the process box
 theme[graph_text]="${C[subtext0]}"
 theme[meter_bg]="${C[surface1]}"
 theme[proc_misc]="${C[rosewater]}"
 
-# Рамки боксов и разделители
+# Box borders and dividers
 theme[cpu_box]="${C[mauve]}"
 theme[mem_box]="${C[green]}"
 theme[net_box]="${C[maroon]}"
 theme[proc_box]="${C[blue]}"
 theme[div_line]="${C[surface1]}"
 
-# Температуры и загрузка cpu — «выше значит хуже»
+# Temperatures and cpu load — "higher means worse"
 theme[temp_start]="${C[green]}"
 theme[temp_mid]="${C[yellow]}"
 theme[temp_end]="${C[red]}"
@@ -371,7 +371,7 @@ theme[cpu_start]="${C[green]}"
 theme[cpu_mid]="${C[yellow]}"
 theme[cpu_end]="${C[red]}"
 
-# Индикаторы памяти и дисков
+# Memory and disk meters
 theme[free_start]="${C[teal]}"
 theme[free_mid]=""
 theme[free_end]=""
@@ -385,7 +385,7 @@ theme[used_start]="${C[green]}"
 theme[used_mid]="${C[yellow]}"
 theme[used_end]="${C[red]}"
 
-# Графики сети
+# Network graphs
 theme[download_start]="${C[teal]}"
 theme[download_mid]="${C[sky]}"
 theme[download_end]="${C[blue]}"
@@ -396,18 +396,18 @@ EOF
 }
 
 emit_tmux() {
-    # Те же имена, что в themes/catppuccin_<flavor>_tmux.conf завендоренного
-    # плагина. Плагин ставит свои через `set -o` — только если опция ещё не
-    # задана, — поэтому tmux.conf читает этот файл ДО `run catppuccin.tmux`, и
-    # плагин наши значения не трогает. Живому tmux после смены файла нужен
-    # source-file всего tmux.conf (делает theme-toggle refresh): статус плагин
-    # собирает форматами `#{@thm_*}`, но часть цветов запекает в опции при
-    # загрузке, и без повторного прогона плагина они не обновятся.
+    # Same names as in themes/catppuccin_<flavor>_tmux.conf of the vendored
+    # plugin. The plugin sets its own with `set -o` — only if the option isn't
+    # set yet — so tmux.conf reads this file BEFORE `run catppuccin.tmux`, and
+    # the plugin leaves our values alone. A live tmux needs a source-file of the
+    # whole tmux.conf after the file changes (theme-toggle refresh does it): the
+    # plugin builds the status with `#{@thm_*}` formats, but bakes some colors
+    # into options at load time, and they won't update without rerunning the plugin.
     #
-    # `set -g`, без -o: при повторном source значения должны перезаписываться.
+    # `set -g`, without -o: on a repeated source the values must be overwritten.
     cat <<EOF
-# ${theme_name}. Сгенерировано theme-colors, руками не править.
-# Пишут theme-toggle refresh и modules/core/update; tmux.conf читает до плагина.
+# ${theme_name}. Generated by theme-colors, do not edit by hand.
+# Written by theme-toggle refresh and modules/core/update; tmux.conf reads it before the plugin.
 set -g @thm_bg "${C[base]}"
 set -g @thm_fg "${C[text]}"
 
@@ -440,28 +440,28 @@ EOF
 }
 
 emit_swaylock() {
-    # Конфиг целиком, а не только цвета: у swaylock нет include, а без файла он
-    # поднимается в дефолтном белом. Опции вместе с их оговорками живут здесь.
+    # The whole config, not just colors: swaylock has no include, and without the
+    # file it comes up in default white. The options live here with their caveats.
     #
-    # Цвета без «#»: swaylock читает голый RRGGBB[AA].
+    # Colors without "#": swaylock reads bare RRGGBB[AA].
     local base=${C[base]#\#} text=${C[text]#\#}
     cat <<EOF
-# ${theme_name}. Сгенерировано theme-colors, руками не править.
-# Пишет theme-toggle refresh; в git файла нет.
+# ${theme_name}. Generated by theme-colors, do not edit by hand.
+# Written by theme-toggle refresh; the file is not in git.
 #
-# Замок всегда в тёмном режиме текущей палитры (theme-toggle зовёт генератор с
-# явным dark): swaylock читает файл один раз при запуске, перекрасить живой
-# нечем, а замок и должен быть тёмным.
+# The lock is always in the dark mode of the current palette (theme-toggle calls
+# the generator with an explicit dark): swaylock reads the file once at startup,
+# there's no way to recolor a running one, and a lock screen should be dark anyway.
 
-# Без ignore-empty-password: пустой Enter — это «проверь палец» (pam_fprintd в
-# /etc/pam.d/swaylock, см. ~/.system-setup/fingerprint-swaylock.md).
+# No ignore-empty-password: an empty Enter means "check the finger" (pam_fprintd in
+# /etc/pam.d/swaylock, see ~/.system-setup/fingerprint-swaylock.md).
 show-failed-attempts
 
 color=$base
-# indicator-idle-visible, а не голый \`indicator\`: короткого имени в swaylock 1.8
-# нет, а getopt_long дотягивает префикс до нескольких длинных опций и падает с
-# «option '--indicator' is ambiguous» — весь конфиг тогда не читается, и замок
-# молча не поднимается (проверено, потеряли на этом полчаса).
+# indicator-idle-visible, not a bare \`indicator\`: swaylock 1.8 has no such short
+# name, and getopt_long expands the prefix to several long options and dies with
+# "option '--indicator' is ambiguous" — the whole config is then not read, and the
+# lock silently fails to come up (verified, lost half an hour on this).
 indicator-idle-visible
 indicator-radius=90
 indicator-thickness=8
@@ -496,65 +496,66 @@ EOF
 }
 
 emit_telegram() {
-    # Монохромный значок Telegram в трее, один из трёх вариантов: "" (обычный),
-    # mute, attention. Telegram отдаёт трею не картинку, а имя из темы иконок
-    # (org.telegram.desktop[-mute|-attention]-symbolic; и галка «Use monochrome
-    # icon» в его настройках появляется, только если такой значок в теме есть),
-    # а waybar рисует его как есть, не перекрашивая. Поэтому цвет запекается в SVG.
+    # Monochrome Telegram tray icon, one of three variants: "" (normal), mute,
+    # attention. Telegram gives the tray not a picture but a name from the icon
+    # theme (org.telegram.desktop[-mute|-attention]-symbolic; and the "Use
+    # monochrome icon" checkbox in its settings only appears if such an icon
+    # exists in the theme), and waybar draws it as is, without recoloring. So the
+    # color is baked into the SVG.
     #
-    # Рисунок не свой: берётся из arm64-сборки, извлечённой из snap
-    # (~/.system-setup/telegram-arm64.md), в нём меняются три цвета — белый
-    # самолётик, серый бейдж mute, красный бейдж attention. Нет сборки — нет и
-    # значка: ошибка, refresh этот шаг пропускает.
+    # The drawing isn't ours: it's taken from the arm64 build extracted from the
+    # snap (~/.system-setup/telegram-arm64.md), three colors in it are replaced —
+    # the white plane, the grey mute badge, the red attention badge. No build — no
+    # icon: an error, refresh skips this step.
     local variant="$1"
     local src="$HOME/.local/opt/telegram/app/usr/share/icons/hicolor/symbolic/apps/snap.telegram-desktop.${variant:+-$variant}-symbolic.svg"
-    [[ -r "$src" ]] || { echo "${0##*/}: нет исходного значка: $src" >&2; return 1; }
+    [[ -r "$src" ]] || { echo "${0##*/}: no source icon: $src" >&2; return 1; }
     sed -e "s/#FFFFFF/${C[text]}/I" \
         -e "s/#888888/${C[overlay1]}/I" \
         -e "s/#f23c34/${C[red]}/I" "$src"
 }
 
 emit_vscode() {
-    # Имя темы из расширения (label в его package.json). Совпадает с theme_name
-    # не случайно: theme_name и подобран как «имя темы, как её зовут снаружи».
-    # Разойдутся — разводить здесь, не трогая theme_name.
+    # Theme name from the extension (label in its package.json). It matching
+    # theme_name is no accident: theme_name was chosen as "the theme's name as the
+    # outside world knows it". If they ever diverge — split them here, leaving theme_name alone.
     echo "$theme_name"
 }
 
 emit_slack() {
-    # Строка для Preferences → Themes → Custom theme, восемь цветов через запятую:
-    # фон колонки, фон при наведении в меню, активный пункт, текст активного
-    # пункта, пункт под курсором, текст, индикатор присутствия, бейдж упоминаний.
-    # Slack это поле снаружи не задаёт никто — строка вставляется руками.
+    # String for Preferences → Themes → Custom theme, eight comma-separated colors:
+    # column background, menu hover background, active item, active item text,
+    # item under cursor, text, presence indicator, mention badge.
+    # Nothing sets this field in Slack from outside — the string is pasted by hand.
     printf '%s,%s,%s,%s,%s,%s,%s,%s\n' \
         "${C[base]}" "${C[surface0]}" "${C[blue]}" "${C[crust]}" \
         "${C[surface1]}" "${C[text]}" "${C[green]}" "${C[red]}"
 }
 
-# ── Разбор аргументов ─────────────────────────────────────────────────────────
+# ── Argument parsing ──────────────────────────────────────────────────────────
 
 target="${1:-}"
 mode="${2:-$(current_mode)}"
 palette="${3:-$(current_palette)}"
 
-# theme_name — имя темы, как её зовут снаружи (заголовки файлов, VS Code).
+# theme_name — the theme's name as the outside world knows it (file headers, VS Code).
 #
-# nord:light → Latte: светлого Nord не существует, а без светлого режима
-# переключатель ☾/☀ при палитре nord пришлось бы либо ломать, либо прятать.
-# Latte — рабочая светлая тема, которая уже была; кто нарисует светлый Nord,
-# заменит одну строку здесь.
+# nord:light → Latte: there's no light Nord, and without a light mode the ☾/☀
+# toggle would have to be either broken or hidden with the nord palette. Latte
+# is a working light theme that already existed; whoever draws a light Nord
+# replaces one line here.
 case "$palette:$mode" in
     catppuccin:dark)  theme_name="Catppuccin Mocha"; declare -n SRC=MOCHA ;;
     catppuccin:light) theme_name="Catppuccin Latte"; declare -n SRC=LATTE ;;
     nord:dark)        theme_name="Nord";             declare -n SRC=NORD ;;
     nord:light)       theme_name="Catppuccin Latte"; declare -n SRC=LATTE ;;
     catppuccin:*|nord:*)
-        echo "${0##*/}: неизвестный режим: $mode (dark|light)" >&2; exit 2 ;;
+        echo "${0##*/}: unknown mode: $mode (dark|light)" >&2; exit 2 ;;
     *)
-        echo "${0##*/}: неизвестная палитра: $palette (catppuccin|nord)" >&2; exit 2 ;;
+        echo "${0##*/}: unknown palette: $palette (catppuccin|nord)" >&2; exit 2 ;;
 esac
 
-# Копия с разыменованного nameref: дальше по коду обращаемся к ней как к C.
+# A copy of the dereferenced nameref: further down the code refers to it as C.
 declare -A C
 for role in "${!SRC[@]}"; do C[$role]=${SRC[$role]}; done
 

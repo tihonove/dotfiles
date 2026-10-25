@@ -1,16 +1,16 @@
 // -*- mode: jsonc -*-
-// Панель. Порт стокового /etc/xdg/waybar/config.jsonc — модули те же, выкинуто
-// только то, для чего на этой машине нет ни демона, ни бинарника.
+// The bar. A port of the stock /etc/xdg/waybar/config.jsonc — same modules,
+// minus only those that have neither a daemon nor a binary on this machine.
 {
     "height": 30,
     "spacing": 4,
 
-    // "reload_style_on_change": true НЕ ставить. Опция делает ровно то, что нужно
-    // при смене светлой/тёмной темы — следит за style.css и за @import'ами, а
-    // туда подключён генерируемый colors.css. Но выигрыша нет: панель всё равно
-    // моргает (reload пересобирает бары), зато после него разъезжались зоны
-    // клика — вся панель начинала работать как один модуль, клик в любое место
-    // переключал тему. Стиль обновляет `theme-toggle refresh` сигналом SIGUSR2.
+    // Do NOT set "reload_style_on_change": true. The option does exactly what's
+    // needed on a light/dark theme switch — it watches style.css and its
+    // @imports, which include the generated colors.css. But it buys nothing: the
+    // bar blinks anyway (reload rebuilds the bars), and afterwards the click
+    // zones got misaligned — the whole bar acted as one module, a click anywhere
+    // toggled the theme. The style is refreshed by `theme-toggle refresh` via SIGUSR2.
 
     "modules-left": [
         "sway/workspaces",
@@ -20,16 +20,16 @@
     "modules-center": [
         "sway/window"
     ],
-    // Порядок справа налево: ⏻, часы, батарея, wifi, язык, тема, датчики, звук.
-    // Часы+батарея стоят вплотную (см. отступы в style.css) — это один блок
-    // «сколько времени и надолго ли хватит»; cpu/mem/temp — вообще один модуль
-    // custom/system, три символа в одной строке.
+    // Order right to left: ⏻, clock, battery, wifi, language, theme, sensors, sound.
+    // Clock+battery sit tight together (see paddings in style.css) — one block,
+    // "what time is it and how long will the charge last"; cpu/mem/temp is a
+    // single module, custom/system, three glyphs in one line.
     //
-    // Трей стоит первым, то есть левее всех показателей: его содержимое
-    // произвольного размера и цвета — иконки рисуют сами приложения, монохром
-    // панели на них не распространяется. Внутри ряда датчиков он раздвигал бы
-    // соседей при каждом появлении новой иконки; с краю группы он растёт влево,
-    // в пустоту, и ничего не двигает.
+    // The tray goes first, i.e. left of all the indicators: its contents have
+    // arbitrary size and color — apps draw their own icons, the bar's
+    // monochrome doesn't apply to them. Inside the sensor row it would push its
+    // neighbours apart every time a new icon showed up; at the edge of the
+    // group it grows to the left, into empty space, and moves nothing.
     "modules-right": [
         "group/ytm",
         "group/slack",
@@ -46,13 +46,13 @@
     ],
 
 
-    // Выкинуто из стокового набора:
-    //   mpd                   — демона mpd нет
-    //   power-profiles-daemon — сервиса нет, модуль просто висел бы пустым
-    //   custom/media          — тянет playerctl и ~/.config/waybar/mediaplayer.py
-    //   battery#bat2          — батарея одна (qcom-battmgr-bat)
-    //   keyboard-state        — Caps переключает раскладку (настоящий Caps — Shift+Caps), показывать нечего
-    //   backlight             — панель и так широкая, яркость крутится клавишами
+    // Dropped from the stock set:
+    //   mpd                   — no mpd daemon
+    //   power-profiles-daemon — no such service, the module would just sit empty
+    //   custom/media          — pulls in playerctl and ~/.config/waybar/mediaplayer.py
+    //   battery#bat2          — there's only one battery (qcom-battmgr-bat)
+    //   keyboard-state        — Caps switches layout (real Caps is Shift+Caps), nothing to show
+    //   backlight             — the bar is crowded enough, brightness is on hotkeys
 
     "sway/mode": {
         "format": "<span style=\"italic\">{}</span>"
@@ -66,30 +66,31 @@
         "tooltip-format": "{app}: {title}"
     },
 
-    // Раскладка us/ru — переключается Caps Lock или Win+Space (см. sway config).
+    // us/ru layout — switched with Caps Lock or Win+Space (see sway config).
     //
-    // Родной sway/language отсюда убран: он показывает раскладку любого
-    // устройства, о котором пришло событие, а wtype (им content-tab
-    // переключает вкладки по $mod+Alt+h/l) на каждый запуск создаёт и убивает
-    // виртуальную клавиатуру без раскладок вообще — индикатор гас на каждое
-    // переключение вкладки до следующего Win+Space. Фильтр по устройству
-    // модуль не умеет ни в 0.15.0, ни в master, поэтому раскладку читает свой
-    // ~/.local/bin/lang-status; там же весь разбор.
+    // The native sway/language is gone: it shows the layout of whichever device
+    // an event came from, and wtype (content-tab uses it to switch tabs on
+    // $mod+Alt+h/l) creates and kills a virtual keyboard with no layouts at all
+    // on every run — the indicator went blank on every tab switch until the
+    // next Win+Space. The module can't filter by device, neither in 0.15.0 nor
+    // in master, so the layout is read by our own ~/.local/bin/lang-status;
+    // all the details are there.
     //
-    // Без interval: скрипт резидентный и печатает строку по событию sway.
+    // No interval: the script is resident and prints a line on each sway event.
     "custom/language": {
         "format": "{}",
         "return-type": "json",
         "exec": "$HOME/.local/bin/lang-status"
     },
 
-    // Пульт ytm (музыка с YouTube в терминале): ⏮  󰝚 Название  ⏭ . Пока ytm
-    // ничего не играет, все три пустые и waybar их прячет. Стоит левее трея —
-    // появляется и исчезает с края, ничего не двигая.
+    // ytm remote (YouTube music in the terminal): ⏮  󰝚 Title  ⏭ . While ytm is
+    // playing nothing, all three are empty and waybar hides them. Sits left of
+    // the tray — appears and disappears at the edge, moving nothing.
     //
-    // Всё делает ~/.local/bin/ytm-bar, там же разбор. Название — резидентный
-    // скрипт, подписан на mpv по IPC, без опроса. Кнопки — interval "once" +
-    // signal 10: их перерисовывает сам ytm-bar, когда музыка появилась/пропала.
+    // Everything is done by ~/.local/bin/ytm-bar, details there. The title is a
+    // resident script subscribed to mpv over IPC, no polling. The buttons use
+    // interval "once" + signal 10: ytm-bar redraws them itself when music
+    // appears/disappears.
     "group/ytm": {
         "orientation": "horizontal",
         "modules": ["custom/ytm-prev", "custom/ytm", "custom/ytm-next"]
@@ -101,8 +102,8 @@
         "max-length": 40,
         "on-click": "$HOME/.local/bin/ytm-bar toggle",
         "on-click-right": "$HOME/.local/bin/ytm-bar menu",
-        // Колесо — громкость только музыки (volume самого mpv), системная
-        // остаётся за модулем pulseaudio.
+        // Wheel — volume of the music only (mpv's own volume); the system
+        // volume stays with the pulseaudio module.
         "on-scroll-up": "$HOME/.local/bin/ytm-bar vol +5",
         "on-scroll-down": "$HOME/.local/bin/ytm-bar vol -5"
     },
@@ -132,14 +133,15 @@
         "format-alt": "{:%Y-%m-%d}"
     },
 
-    // Slack — веб-версия, поставленная из Chrome как приложение: трея у неё нет,
-    // непрочитанное видно только в заголовке окна. Его и читает slack-status
-    // (резидентный, подписан на события окон sway). Slack не запущен — модуль
-    // пустой и прячется. Клик — показать окно Slack, в том числе из scratchpad.
+    // Slack is the web version installed from Chrome as an app: it has no tray
+    // icon, unread messages show up only in the window title. That's what
+    // slack-status reads (resident, subscribed to sway window events). Slack
+    // not running — the module is empty and hidden. Click — show the Slack
+    // window, including from the scratchpad.
     //
-    // Два модуля: значок и красный кружок с числом. Кружок — CSS своего
-    // виджета (border-radius), в одном лейбле Pango такого не нарисует.
-    // Непрочитанного нет — кружок пустой, waybar его прячет.
+    // Two modules: the icon and a red circle with the count. The circle is CSS
+    // of its own widget (border-radius); Pango can't draw that in one label.
+    // Nothing unread — the circle is empty and waybar hides it.
     "group/slack": {
         "orientation": "horizontal",
         "modules": ["custom/slack", "custom/slack-count"]
@@ -157,32 +159,33 @@
         "on-click": "$HOME/.local/bin/slack-status focus"
     },
 
-    // Датчики: три символа подряд, без единого пробела — столбик загрузки,
-    // столбик памяти, сплошной прямоугольник температуры, который говорит
-    // цветом. Цифр в панели нет вовсе, все подробности в тултипе (наведение,
-    // как календарь у часов).
+    // Sensors: three glyphs in a row, without a single space — a load bar, a
+    // memory bar, and a solid temperature rectangle that speaks through color.
+    // No numbers on the bar at all, every detail is in the tooltip (on hover,
+    // like the clock's calendar).
     //
-    // Почему один custom, а не родные cpu/memory/temperature в group: каждый
-    // родной модуль — свой GtkLabel со своими отступами, вплотную их не свести,
-    // шов между лейблами остаётся и при нулевом padding. Плюс температуру всё
-    // равно пришлось бы считать снаружи: градаций цвета родной модуль не даёт,
-    // states он игнорирует (проверено на 0.15.0 — с "states" и "format-<state>"
-    // ни текст не меняется, ни класс не навешивается; в waybar-temperature(5)
-    // их и нет, в отличие от cpu и memory).
+    // Why one custom module and not the native cpu/memory/temperature in a
+    // group: each native module is a separate GtkLabel with its own paddings,
+    // they can't be packed tight — a seam between labels remains even with
+    // zero padding. Plus the temperature would have to be computed outside
+    // anyway: the native module has no color grades and ignores states (tested
+    // on 0.15.0 — with "states" and "format-<state>" neither the text changes
+    // nor a class gets set; they're not in waybar-temperature(5) either, unlike
+    // cpu and memory).
     //
-    // Всё считает ~/.local/bin/sys-status, там же пороги и разбор.
+    // Everything is computed by ~/.local/bin/sys-status, thresholds and details there.
     //
-    // Обновления apt: значок с числом, пока есть что ставить; пусто — модуль
-    // скрыт. Стоит сразу за треем по той же логике: появляется и исчезает, а с
-    // края ничего не двигает.
+    // apt updates: an icon with a count while there's something to install;
+    // nothing — the module is hidden. Sits right after the tray by the same
+    // logic: it appears and disappears, and at the edge it moves nothing.
     //
-    // Ничего не проверяет и не опрашивается: читает файл, который Ubuntu пишет
-    // после каждого apt update / dpkg (update-notifier). interval "once" +
-    // signal 9 — перерисовка только по SIGRTMIN+9 из apt-хука
-    // /etc/apt/apt.conf.d/99zz-waybar-updates. Сами списки качает apt-daily.timer,
-    // раз в сутки и только от розетки. Разбор: ~/.system-setup/updates-waybar-indicator.md
+    // Checks nothing and polls nothing: reads the file Ubuntu writes after each
+    // apt update / dpkg (update-notifier). interval "once" + signal 9 — redraw
+    // only on SIGRTMIN+9 from the apt hook /etc/apt/apt.conf.d/99zz-waybar-updates.
+    // The lists themselves are fetched by apt-daily.timer, once a day and only on
+    // AC power. Details: ~/.system-setup/updates-waybar-indicator.md
     //
-    // Клик — kitty с apt upgrade; хук после dpkg сам обновит значок.
+    // Click — kitty with apt upgrade; the post-dpkg hook refreshes the icon itself.
     "custom/updates": {
         "format": "{}",
         "return-type": "json",
@@ -192,9 +195,9 @@
         "signal": 9
     },
 
-    // interval 3: столбик загрузки — это разница между двумя замерами /proc/stat,
-    // то есть заодно и окно усреднения. Реже — индикатор врёт про короткие
-    // всплески, чаще — незачем, на каждом тике форкается bash.
+    // interval 3: the load bar is the difference between two /proc/stat samples,
+    // i.e. also the averaging window. Less often — the indicator lies about short
+    // spikes; more often — pointless, bash gets forked on every tick.
     "custom/system": {
         "format": "{}",
         "return-type": "json",
@@ -202,25 +205,25 @@
         "interval": 3
     },
 
-    // Иконка — батарейка с делениями, шаг 10%: waybar сам делит 0..100 на длину
-    // массива, так что 11 элементов дают ровно шкалу outline/10/…/90/full.
-    // Пять стоковых FontAwesome-иконок для этого грубоваты: между «полная» и
-    // «половина» у них не было ничего, а тут заряд виден на глаз без чтения цифр.
+    // The icon is a battery with divisions, 10% step: waybar itself splits 0..100
+    // over the array length, so 11 elements give exactly the outline/10/…/90/full scale.
+    // The five stock FontAwesome icons are too coarse for that: they had nothing
+    // between "full" and "half", while here the charge is readable at a glance.
     //
-    // format-icons объектом: waybar ищет ключ по статусу (charging), потом по
-    // состоянию из states, потом default — поэтому у зарядки свой ряд глифов
-    // (с молнией) и format-charging уже не нужен отдельной строкой.
+    // format-icons as an object: waybar looks the key up by status (charging),
+    // then by state from states, then default — so charging gets its own row of
+    // glyphs (with a bolt) and format-charging doesn't need a separate line.
     //
-    // Глифы — Material Design из Nerd Font: разряд U+F008E, F007A..F0082, F0079;
-    // зарядка U+F089F, F089C, F0086..F0088, F089D, F0089, F089E, F008A, F008B,
-    // F0085 (нумерация MD идёт не подряд, порядок именно такой — 0,10,…,100).
-    // Проверять правки codepoint'ами, а не глазами: пустой глиф выглядит как
-    // пробел и молча ломает шкалу.
-    // По умолчанию — одна иконка, без процентов: шкала из 11 глифов и так
-    // показывает заряд с шагом 10%, а цифра рядом дублировала её же. Точное
-    // число никуда не делось — оно в тултипе и по клику (format-alt, там же
-    // остаток времени). Красной иконка становится ниже 30% — это состояние
-    // warning, красит его style.css.
+    // Glyphs are Material Design from Nerd Font: discharging U+F008E, F007A..F0082, F0079;
+    // charging U+F089F, F089C, F0086..F0088, F089D, F0089, F089E, F008A, F008B,
+    // F0085 (MD numbering isn't contiguous, the order is exactly this — 0,10,…,100).
+    // Check edits by codepoints, not by eye: an empty glyph looks like a space
+    // and silently breaks the scale.
+    // By default — a single icon, no percentage: the 11-glyph scale already
+    // shows the charge in 10% steps, and a number next to it just duplicated it.
+    // The exact number hasn't gone anywhere — it's in the tooltip and on click
+    // (format-alt, together with the time left). The icon turns red below 30% —
+    // that's the warning state, colored by style.css.
     "battery": {
         "states": {
             "warning": 30,
@@ -237,16 +240,16 @@
         }
     },
 
-    // Компактно: одна иконка — «палочки» по уровню сигнала, без SSID и процентов.
-    // format-icons идёт от слабого к сильному, waybar сам раскладывает
-    // signalStrength 0..100 по длине массива (man 5 waybar-network).
+    // Compact: a single icon — signal-strength "bars", no SSID or percentage.
+    // format-icons goes from weak to strong, waybar itself maps signalStrength
+    // 0..100 onto the array length (man 5 waybar-network).
     //
-    // Подробности не потеряны: они в тултипе, а клик (format-alt) разворачивает
-    // модуль в SSID с процентами и обратно.
+    // The details aren't lost: they're in the tooltip, and a click (format-alt)
+    // expands the module to SSID with percentage and back.
     //
-    // Иконки — Material Design из Nerd Font (U+F091F..U+F092F). Раньше тут были
-    // FontAwesome-глифы, но в файл они записались пустыми, и модуль показывал
-    // голый текст — если правишь эти строки, проверяй байты, а не глаза.
+    // Icons are Material Design from Nerd Font (U+F091F..U+F092F). There used to
+    // be FontAwesome glyphs here, but they ended up empty in the file and the
+    // module showed bare text — if you edit these lines, check bytes, not looks.
     "network": {
         "format-wifi": "{icon}",
         "format-icons": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"],
@@ -259,19 +262,19 @@
         "tooltip-format-disconnected": "Сеть отключена"
     },
 
-    // Звуковой сервер тут pulseaudio (не pipewire), модуль его и слушает.
-    // on-click из стокового конфига убран: pavucontrol не установлен.
+    // The sound server here is pulseaudio (not pipewire), the module listens to it.
+    // on-click from the stock config is dropped: pavucontrol isn't installed.
     //
-    // {format_source} убран из всех format-строк: это громкость микрофона, и
-    // висела она вечными «100%» рядом с громкостью колонок — два числа подряд
-    // без подсказки, какое из них какое. Микрофон не крутится с этой панели,
-    // показывать его нечего; осталось «иконка + проценты», как у батареи.
+    // {format_source} is removed from all format strings: that's the mic volume,
+    // and it sat there as a permanent "100%" next to the speaker volume — two
+    // numbers in a row with no hint which is which. The mic isn't adjusted from
+    // this bar, nothing to show; what's left is "icon + percent", like the battery.
     //
-    // Глифы — Material Design из Nerd Font: volume low/medium/high U+F057F,
-    // F0580, F057E, mute U+F075F, наушники U+F02CB, гарнитура U+F02CD,
-    // телефон U+F011C, колонка U+F04C3, авто U+F010B. В стоковом конфиге здесь
-    // стояли FontAwesome-глифы, но в файл записались пустыми — иконки звука не
-    // было вообще. Правки проверять codepoint'ами, а не глазами.
+    // Glyphs are Material Design from Nerd Font: volume low/medium/high U+F057F,
+    // F0580, F057E, mute U+F075F, headphones U+F02CB, headset U+F02CD,
+    // phone U+F011C, speaker U+F04C3, car U+F010B. The stock config had
+    // FontAwesome glyphs here, but they ended up empty in the file — there was no
+    // sound icon at all. Check edits by codepoints, not by eye.
     "pulseaudio": {
         "format": "{icon} {volume}%",
         "format-bluetooth": "{icon} {volume}%",
@@ -288,13 +291,13 @@
         }
     },
 
-    // Светлая/тёмная тема. Скрипт дёргает gsettings, оттуда через
-    // xdg-desktop-portal тему видят Chrome, Electron и GTK — см. комментарий
-    // в ~/.local/bin/theme-toggle.
+    // Light/dark theme. The script calls gsettings; from there, via
+    // xdg-desktop-portal, the theme reaches Chrome, Electron and GTK — see the
+    // comment in ~/.local/bin/theme-toggle.
     //
-    // interval "once" + signal: модуль сам не опрашивается, а перерисовывается
-    // по SIGRTMIN+8 — его шлёт сам скрипт, чтобы иконка менялась и когда тему
-    // переключают из терминала, а не только по клику.
+    // interval "once" + signal: the module doesn't poll, it's redrawn on
+    // SIGRTMIN+8 — sent by the script itself, so the icon changes also when the
+    // theme is switched from a terminal, not only on click.
     "custom/theme": {
         "format": "{}",
         "return-type": "json",
@@ -304,9 +307,9 @@
         "signal": 8
     },
 
-    // Меню выключения по клику — то же, что по кнопке питания ноута. Встроенное
-    // "menu" у custom-модулей есть только с waybar 0.11, в Ubuntu 24.04 стоит
-    // 0.9.24, и там клик не делал ничего; см. ~/.local/bin/power-menu.
+    // Power menu on click — same as the laptop's power button. The built-in
+    // "menu" for custom modules exists only since waybar 0.11, Ubuntu 24.04 ships
+    // 0.9.24, where a click did nothing; see ~/.local/bin/power-menu.
     "custom/power": {
         "format": "⏻ ",
         "tooltip": false,
