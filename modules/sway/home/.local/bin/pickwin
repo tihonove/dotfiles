@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Выбрать окно кликом и напечатать его геометрию в формате slurp/grim/wf-recorder:
+# "X,Y WxH". Подсвечиваются только видимые окна; Escape — код 1 и пустой вывод.
+#
+#   grim -g "$(pickwin)" out.png
+#
+# Берём только клиентскую часть, без рамки sway: rect — контейнер с рамкой,
+# window_rect — клиент, но в координатах контейнера, поэтому складываем.
+
+set -euo pipefail
+
+swaymsg -t get_tree | jq -r '
+    recurse(.nodes[]?, .floating_nodes[]?)
+    | select(.pid? and .visible == true)
+    | "\(.rect.x + .window_rect.x),\(.rect.y + .window_rect.y) \(.window_rect.width)x\(.window_rect.height)"' \
+    | slurp -r

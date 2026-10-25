@@ -1540,6 +1540,24 @@ sudo usermod -aG video "$USER"   # применяется после релог�
 sudo install -m 644 system/99zz-waybar-updates /etc/apt/apt.conf.d/
 ```
 
+### screenrec: wf-recorder-nc, curlog, smoothcast
+
+Свои утилиты для записи экрана с плавным курсором (Ctrl+Print). Собираются CI
+по тегу в своих репозиториях и раздаются apt-репозиторием
+[tihonove/apt](https://github.com/tihonove/apt) — Ubuntu 24.04/26.04,
+amd64/arm64:
+
+```sh
+curl -fsSL https://tihonove.github.io/apt/install.sh | sudo sh
+```
+
+Ключ ложится в `/etc/apt/keyrings/tihonove.asc`, источник — в
+`/etc/apt/sources.list.d/tihonove.sources` (suite по `VERSION_CODENAME`), udev-
+правило для кликов ставит пакет curlog. Обновления — обычный `apt upgrade`.
+`modules/sway/update` проверяет пакеты и печатает эту команду, если чего-то
+нет; `migrations/0004-screenrec-from-apt` убирает прежние копии из
+`~/.local/bin`, которые заслоняли бы пакетные.
+
 ### tailscale
 
 Не через `modules/<модуль>/update`: это системный демон с юнитом systemd и правами на

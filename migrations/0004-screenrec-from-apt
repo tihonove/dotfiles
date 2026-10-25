@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# 2026-10-21. wf-recorder-nc, curlog и smoothcast больше не собираются руками
+# (`make install` в ~/workspace/smoothcast → ~/.local/bin) — они приезжают
+# пакетами из https://github.com/tihonove/apt (см. check_screenrec_packages в
+# modules/sway/update). На машине от прежней схемы остаётся:
+#
+#   ~/.local/bin/{wf-recorder-nc,curlog,smoothcast}
+#       ~/.local/bin в PATH раньше /usr/bin, так что эти копии ЗАСЛОНЯЮТ
+#       пакетные и не обновляются. Убираются, но каждый — только когда его
+#       пакетная версия уже есть в PATH: иначе screenrec молча откатился бы на
+#       запись с курсором в кадре.
+#   /etc/udev/rules.d/70-smoothcast-pointers.rules
+#       то же правило теперь ставит пакет curlog (60-curlog.rules). Дубль
+#       безвреден, но это /etc и sudo — только напоминаем.
+#
+# Контракт миграции — см. «Миграции» в install.sh: срабатывает по состоянию,
+# идемпотентна, при DOTFILES_DRY_RUN=1 только рассказывает. Молчит, когда чинить
+# нечего.
+
+set -euo pipefail
+
+HOME_DIR="${DOTFILES_HOME:-$HOME}"
+DRY_RUN="${DOTFILES_DRY_RUN:-0}"
+
+BIN_DIR="$HOME_DIR/.local/bin"
+rest_path=$(tr ':' '\n' <<<"$PATH" | grep -vxF "$BIN_DIR" | paste -sd: -)
+
+for tool in wf-recorder-nc curlog smoothcast; do
+    old="$BIN_DIR/$tool"
+    [[ -x "$old" ]] || continue
+    packaged=$(PATH="$rest_path" command -v "$tool" 2>/dev/null || true)
+    [[ -n "$packaged" ]] || continue
+    if ((DRY_RUN)); then
+        echo "убрал бы ~/.local/bin/$tool: он заслоняет $packaged"
+    else
+        rm -f -- "$old"
+        echo "убран ~/.local/bin/$tool — заслонял $packaged"
+    fi
+done
+
+rule=/etc/udev/rules.d/70-smoothcast-pointers.rules
+if [[ -e $rule && -e /usr/lib/udev/rules.d/60-curlog.rules ]]; then
+    cat <<MSG
+$rule дублирует правило из пакета curlog, можно убрать:
+    sudo rm $rule && sudo udevadm control --reload
+MSG
+fi

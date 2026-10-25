@@ -101,6 +101,8 @@ for_window [app_id="bluetuith"] floating enable, resize set 900 600, move positi
 for_window [app_id="x13s-settings"] floating enable, resize set 1000 700, move position center
 # satty подгоняет окно под размер снимка — в тайлинге от этого нет толку.
 for_window [app_id="com.gabm.satty"] floating enable, move position center
+# Video Trimmer открывается после записи из screenrec — так же, как satty.
+for_window [app_id="org.gnome.gitlab.YaLTeR.VideoTrimmer"] floating enable, move position center
 
 # Клик по уведомлению должен открывать приложение. Цепочка: dunst по левой кнопке
 # шлёт ActionInvoked обратно отправителю, тот сам показывает нужное место (Slack
@@ -397,8 +399,15 @@ bindsym --locked XF86MonBrightnessDown exec brightnessctl set 5%-
 # скопировать в буфер и закрыть, Ctrl+S — сохранить в ~/Pictures/Screenshots,
 # Escape — выкинуть.
 bindsym --to-code Print       exec shot        # выделить область мышью
-bindsym --to-code Shift+Print exec shot -w     # окно в фокусе
+bindsym --to-code Shift+Print exec shot -w     # выбрать окно кликом
 bindsym --to-code $mod+Print  exec shot -f     # весь экран
+
+### Запись экрана
+# ~/.local/bin/screenrec: wf-recorder в ~/Videos, без звука. Та же клавиша
+# второй раз — стоп, путь к файлу уходит в буфер обмена.
+bindsym --to-code Ctrl+Print       exec screenrec      # выделить область
+bindsym --to-code Ctrl+Shift+Print exec screenrec -w   # выбрать окно кликом
+bindsym --to-code Ctrl+$mod+Print  exec screenrec -f   # весь экран
 
 ### История буфера обмена
 # $mod+v показывает последние копирования и ВСТАВЛЯЕТ выбранное в текущее окно.

@@ -1,0 +1,12 @@
+[Desktop Entry]
+# Пункт для лаунчера (wofi, $mod+D) — чтобы съёмка находилась, даже когда
+# забылся бинд. Бинд — в Name: wofi показывает только его. Путь абсолютный —
+# PATH лаунчера не то, что PATH в шелле. Вся шестёрка: shot-*.desktop, screenrec*.desktop.
+Type=Application
+Name=Screenshot — window  (Shift+Print)
+Comment=Click a window, annotate in satty
+Exec=/home/tihonove/.local/bin/shot -w
+Terminal=false
+Categories=Graphics;Utility;
+Keywords=screenshot;screen;shot;capture;скриншот;снимок;экран;window;окно;
+StartupNotify=false

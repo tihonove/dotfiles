@@ -2,7 +2,7 @@
 # Скриншот под sway: grim снимает, satty открывает для аннотирования.
 #
 #   shot        выделить область мышью (slurp)
-#   shot -w     окно в фокусе
+#   shot -w     выбрать окно кликом (pickwin)
 #   shot -f     весь экран
 #
 # Дальше всё решает satty (бинды в ~/.config/satty/config.toml): Enter — снимок
@@ -40,12 +40,7 @@ case "$mode" in
         grim -g "$geom" "$shot"
         ;;
     window)
-        # rect у контейнера — вместе с рамкой sway, window_rect — только
-        # клиент, но его координаты считаются от контейнера, поэтому складываем.
-        geom=$(swaymsg -t get_tree | jq -r '
-            recurse(.nodes[]?, .floating_nodes[]?) | select(.focused)
-            | "\(.rect.x + .window_rect.x),\(.rect.y + .window_rect.y) \(.window_rect.width)x\(.window_rect.height)"')
-        [[ -n "$geom" ]] || die "Нет окна в фокусе"
+        geom=$(pickwin) || exit 0
         grim -g "$geom" "$shot"
         ;;
     full)

@@ -1,0 +1,12 @@
+[Desktop Entry]
+# Пункт для лаунчера (wofi, $mod+D) — чтобы съёмка находилась, даже когда
+# забылся бинд. Бинд — в Name: wofi показывает только его. Путь абсолютный —
+# PATH лаунчера не то, что PATH в шелле. Вся шестёрка: shot-*.desktop, screenrec*.desktop.
+Type=Application
+Name=Screen recording — area  (Ctrl+Print; again — stop)
+Comment=Select an area; smooth cursor, zoom, background
+Exec=/home/tihonove/.local/bin/screenrec
+Terminal=false
+Categories=AudioVideo;Video;Recorder;
+Keywords=screen;record;recorder;video;screencast;запись;экран;видео;демо;скринкаст;area;область;stop;стоп;
+StartupNotify=false

@@ -207,6 +207,26 @@ check_media_packages() {
     fi
 }
 
+# Запись экрана с плавным курсором (screenrec, Ctrl+Print): wf-recorder-nc,
+# curlog и smoothcast — свои утилиты, собираются CI в apt-репозиторий
+# https://github.com/tihonove/apt. Сам репозиторий и пакеты ставит его
+# install.sh под sudo, поэтому отсюда — только проверка и команда. Дальше
+# версии приезжают обычным apt upgrade. Без пакетов screenrec пишет простым
+# wf-recorder, с курсором в кадре.
+check_screenrec_packages() {
+    echo "Пакеты для screenrec..."
+    local p missing=()
+    for p in wf-recorder-nc curlog smoothcast; do
+        [[ $(dpkg-query -W -f='${Status}' "$p" 2>/dev/null) == "install ok installed" ]] || missing+=("$p")
+    done
+    if (( ${#missing[@]} )); then
+        echo "  ⚠  нет: ${missing[*]}"
+        echo "     curl -fsSL https://tihonove.github.io/apt/install.sh | sudo sh"
+    else
+        echo "  ✅ на месте"
+    fi
+}
+
 # Пакеты под sway-overview (обзор столов по тапу $mod). Это python + GTK3 через
 # gi, а в requires проверяются только команды — модуль Python и typelib так не
 # проверишь. Без них бинд просто молча ничего не делает, поэтому проверка тут.
@@ -277,3 +297,4 @@ register_browser_here_host
 check_overview_packages
 install_ytm
 check_media_packages
+check_screenrec_packages

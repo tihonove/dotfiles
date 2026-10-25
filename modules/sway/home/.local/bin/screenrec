@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# Запись экрана в mp4 без звука — показать коллегам демо. Одна клавиша на всё:
+# первый вызов начинает запись, второй останавливает.
+#
+#   screenrec        выделить область мышью (slurp) и писать её
+#   screenrec -w     выбрать окно кликом (pickwin) — пишется его место на экране
+#   screenrec -f     весь экран, на котором фокус
+#
+# Готовый файл — ~/Videos/screenrec-<дата>.mp4: фон, плавный курсор и зум по
+# кликам (smoothcast). Путь — в уведомлении, сам файл — в буфере обмена
+# (вставляется в Slack как вложение); после стопа открывается Video Trimmer.
+# Сырая запись и лог курсора остаются в ~/Videos/raw — можно пересобрать
+# smoothcast'ом с другими настройками.
+#
+# Kooha и прочие GUI идут через xdg-desktop-portal-wlr, а тот на sway 1.11
+# захватывает через ext-image-copy-capture и не отдаёт ни одного кадра (21.10.2026).
+# wf-recorder ходит напрямую через wlr-screencopy, как grim в shot.
+# curlog, smoothcast и wf-recorder-nc — пакетами из https://github.com/tihonove/apt.
+
+set -euo pipefail
+
+title="Запись экрана"
+pidfile="${XDG_RUNTIME_DIR:-/tmp}/screenrec.pid"
+log="${XDG_RUNTIME_DIR:-/tmp}/screenrec.log"
+
+die() { notify-send -u critical "$title" "$1" 2>/dev/null || true; echo "$1" >&2; exit 1; }
+
+# Уже пишем — останавливаем. SIGINT, чтобы wf-recorder дописал хвост mp4.
+if [[ -f "$pidfile" ]] && kill -0 "$(head -1 "$pidfile")" 2>/dev/null; then
+    { read -r wpid; read -r cpid; read -r raw; read -r out; } <"$pidfile"
+    kill -INT "$wpid" ${cpid:+"$cpid"} 2>/dev/null || true
+    while kill -0 "$wpid" 2>/dev/null || { [[ -n "$cpid" ]] && kill -0 "$cpid" 2>/dev/null; }; do
+        sleep 0.1
+    done
+    rm -f "$pidfile"
+    [[ -s "$raw" ]] || die "Запись пустая"
+    # Сборка займёт примерно столько же, сколько шла запись, — отдельным
+    # процессом, чтобы sway-бинд не висел.
+    setsid -f "$0" --finish "$raw" "$out" >>"$log" 2>&1
+    exit 0
+fi
+
+# После стопа: smoothcast → буфер → Video Trimmer. Если собрать не вышло,
+# дальше идёт сырая запись.
+if [[ "${1:-}" == --finish ]]; then
+    raw=$2; out=$3
+    base=${raw%.mp4}
+    if [[ -s "$base.cursor.jsonl" ]] && command -v smoothcast >/dev/null; then
+        notify-send -t 3000 "$title" "Собираю видео…" 2>/dev/null || true
+        if ! smoothcast -o "$out" "$raw" 2>>"$base.smoothcast.log"; then
+            notify-send -u critical "$title" "smoothcast упал, беру сырую запись: $base.smoothcast.log" 2>/dev/null || true
+            cp "$raw" "$out"
+        fi
+    else
+        cp "$raw" "$out"
+    fi
+    # Файлом, а не текстом пути: clip кладёт text/uri-list, и Slack в Chrome
+    # по Ctrl+V прикладывает само видео.
+    clip copy "$out" >/dev/null 2>&1 || true
+    notify-send "$title" "Сохранено: $out" 2>/dev/null || true
+
+    # Video Trimmer не умеет класть результат в буфер, поэтому делаем это за него:
+    # после закрытия окна ищем в папке записи mp4, появившийся за время правки.
+    # Сохранил обрезанное и закрыл окно — в буфере оно, иначе остаётся исходник.
+    since=$(mktemp); trap 'rm -f "$since"' EXIT
+    # Аппаратный v4l2h264dec у GStreamer в приоритете, но после перемотки
+    # перестаёт отдавать кадры — гоним через программный openh264.
+    GST_PLUGIN_FEATURE_RANK=v4l2h264dec:NONE gnome-video-trimmer "$out" || true
+    trimmed=$(find "$(dirname "$out")" -maxdepth 1 -name '*.mp4' -newer "$since" \
+        ! -path "$out" -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
+    if [[ -n "$trimmed" ]]; then
+        clip copy "$trimmed" >/dev/null 2>&1 || true
+        notify-send "$title" "В буфере обрезанное: $trimmed" 2>/dev/null || true
+    fi
+    exit 0
+fi
+
+mode=area
+case "${1:-}" in
+    "")        ;;
+    -w|window) mode=window ;;
+    -f|full)   mode=full ;;
+    -h|--help) sed -n '2,14p' "$0" | cut -c3-; exit 0 ;;
+    *)         die "Неизвестный режим: $1 (screenrec [-w|-f])" ;;
+esac
+
+command -v wf-recorder >/dev/null || die "Нет wf-recorder — sudo apt install wf-recorder"
+
+case "$mode" in
+    area|window)
+        # Escape в slurp — выходим молча. Стороны округляем до чётных:
+        # libx264 с yuv420p на нечётных размерах не стартует.
+        if [[ $mode == area ]]; then geom=$(slurp -d) || exit 0
+        else geom=$(pickwin) || exit 0; fi
+        read -r xy wh <<<"$geom"
+        w=${wh%x*}; h=${wh#*x}
+        args=(-g "$xy $((w / 2 * 2))x$((h / 2 * 2))")
+        ;;
+    full)
+        args=(-o "$(swaymsg -t get_outputs | jq -r '.[] | select(.focused) | .name')")
+        ;;
+esac
+
+mkdir -p ~/Videos/raw
+name=screenrec-$(date +%Y-%m-%d_%H-%M-%S)
+raw=~/Videos/raw/$name.mp4
+out=~/Videos/$name.mp4
+
+# Курсор и клики — отдельным логом; -g/-o у curlog те же, что у wf-recorder.
+# Захват с вшитым курсором глушит сессию курсора в sway (после первого кадра
+# приходит leave, позиций больше нет), поэтому с curlog пишем без курсора —
+# пропатченным wf-recorder-nc (https://github.com/tihonove/wf-recorder, ветка no-cursor).
+# -D: без курсора его движение не считается изменением экрана, и с захватом
+# по изменениям на статичном экране кадры просто не приходят. Ещё на этом
+# держится синхронизация: smoothcast считает время с конца (stop из лога курсора
+# минус длительность видео), а без -D статичный хвост в видео не попадёт.
+cpid=
+recorder=(wf-recorder)
+if command -v curlog >/dev/null && command -v wf-recorder-nc >/dev/null; then
+    curlog "${args[@]}" -f "${raw%.mp4}.cursor.jsonl" 2>>"$log" &
+    cpid=$!
+    recorder=(wf-recorder-nc --no-cursor -D)
+fi
+
+# -r 60: без него wf-recorder пишет переменную частоту с заявленным 1 000 000 fps,
+# x264 ставит уровень 6.2, и openh264 в GStreamer (Video Trimmer) не открывает файл.
+# 60 fps на весь 3440×1440 — ~2.5 ядра, уровень 5.2, openh264 его ещё берёт.
+# g=60: ключевой кадр раз в секунду — Video Trimmer без перекодирования режет
+# только по ним.
+"${recorder[@]}" "${args[@]}" -r 60 -c libx264 -p crf=23 -p preset=veryfast -p g=60 -f "$raw" \
+    >>"$log" 2>&1 &
+printf '%s\n%s\n%s\n%s\n' "$!" "$cpid" "$raw" "$out" >"$pidfile"
+
+notify-send -t 2000 "$title" "Идёт запись. Стоп — та же клавиша." 2>/dev/null || true
