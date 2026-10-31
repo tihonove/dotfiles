@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Scratchpad sway: то, что не выражается одной строкой бинда. Сами слоты живут в
+# sway/config (раздел «Scratchpad») — это просто метки _slotN на окнах.
+#
+#   scratchpad pick   — wofi со спрятанными окнами, выбранное показать
+#                       (Win+Alt+s и клик по модулю в waybar; повторный вызов
+#                       закрывает меню)
+#   scratchpad next   — окна без слота по очереди (Win+Alt+-): показать следующее,
+#                       спрятать показанное. Голый `scratchpad show` тут не годится:
+#                       он перебирает и окна из слотов, а в критериях sway нельзя
+#                       выразить «без метки» — con_mark совпадает только с метками.
+#   scratchpad term   — терминал-шторка: показать/спрятать (Win+Alt+`). Запускается
+#                       при первом нажатии, в автозапуске его нет намеренно.
+#
+# Окно терминала sway сам уносит в scratchpad по app_id, см. for_window в config.
+
+set -euo pipefail
+
+readonly WOFI_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/wofi/scratchpad.conf"
+readonly TERM_APP_ID=scratch-term
+
+pick() {
+    # Повторный клик закрывает открытое меню, а не поднимает второе рядом.
+    if pkill -x -f "wofi --dmenu --conf $WOFI_CONF" 2>/dev/null; then
+        exit 0
+    fi
+
+    # Только спрятанные: показанное окно sway уже переложил на обычный стол. Это
+    # те же окна, что считает модуль в waybar, так что число и список совпадают.
+    # Слот — пробел, а не пусто: read с IFS=таб схлопнул бы пустое поле.
+    local -a ids=() labels=()
+    local id slot app title
+    while IFS=$'\t' read -r id slot app title; do
+        ids+=("$id")
+        labels+=("[$slot] $app — $title")
+    done < <(swaymsg -t get_tree | jq -r '
+        recurse(.nodes[]?) | select(.name == "__i3_scratch") | .floating_nodes[]
+        | [ .id,
+            ([.marks[]? | select(startswith("_slot")) | ltrimstr("_slot")] | first // " "),
+            (.app_id // .window_properties.class // "?"),
+            ((.name // "?") | gsub("[\t\n]"; " ")) ]
+        | @tsv')
+
+    ((${#ids[@]})) || exit 0
+
+    # В wofi-конфиге dmenu-print_line_num: возвращается номер строки, а не текст —
+    # в заголовке окна может быть что угодно, разбирать его обратно нельзя.
+    local line
+    line=$(printf '%s\n' "${labels[@]}" | wofi --dmenu --conf "$WOFI_CONF") || exit 0
+    [[ $line =~ ^[0-9]+$ ]] || exit 0
+    swaymsg "[con_id=${ids[line]}] scratchpad show" >/dev/null
+}
+
+# Порядок как у самого sway: окно в фокусе спрятать, показанное — сфокусировать,
+# иначе показать первое спрятанное. Спрятанное sway уводит в конец списка, поэтому
+# нажатия идут по кругу.
+next() {
+    local id
+    id=$(swaymsg -t get_tree | jq -r '
+        [ recurse(.nodes[]?, .floating_nodes[]?)
+          | select(.type == "floating_con" and .scratchpad_state != "none")
+          | select([.marks[]? | select(startswith("_slot"))] | length == 0) ]
+        | (map(select(.focused)) + map(select(.visible)) + .)[0].id // empty')
+    [[ -n $id ]] || exit 0
+    swaymsg "[con_id=$id] scratchpad show" >/dev/null
+}
+
+term() {
+    if swaymsg -t get_tree \
+        | jq -e --arg id "$TERM_APP_ID" '[.. | objects | select(.app_id? == $id)] | length > 0' >/dev/null; then
+        swaymsg "[app_id=\"^$TERM_APP_ID\$\"] scratchpad show" >/dev/null
+    else
+        exec kitty --single-instance --class "$TERM_APP_ID"
+    fi
+}
+
+case "${1:-}" in
+    pick) pick ;;
+    next) next ;;
+    term) term ;;
+    *) echo "использование: scratchpad pick|next|term" >&2; exit 2 ;;
+esac

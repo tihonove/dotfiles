@@ -324,6 +324,46 @@ bindsym --to-code $mod+Mod1+Right exec content-tab next
 # вкладок kitty не заводит намеренно; разбор — в content-tab.
 bindsym --to-code $mod+Mod1+Return exec content-tab new
 
+### Scratchpad: спрятанные окна
+# Всё на $mod+Alt; h/l, стрелки и Enter на этом же аккорде заняты вкладками (выше).
+#
+#   $mod+Alt+Shift+1..0     спрятать окно в слот
+#   $mod+Alt+1..0           показать/спрятать окно из слота
+#   $mod+Alt+Shift+minus    спрятать окно без слота
+#   $mod+Alt+minus          показывать по очереди окна без слота
+#   $mod+Alt+s              выбрать из списка (то же — клик по модулю в waybar)
+#   $mod+Alt+grave          терминал-шторка
+#
+# Слот — это метка на окне, отдельного состояния нет. Метка в sway уникальна: новое
+# окно в занятом слоте забирает её у старого, старое остаётся спрятанным без слота.
+# mark без --add снимает прежние метки, так что окно не сидит в двух слотах сразу.
+# Подчёркивание в начале — чтобы метка не рисовалась в заголовке окна.
+bindsym --to-code $mod+Mod1+1 [con_mark="^_slot1$"] scratchpad show
+bindsym --to-code $mod+Mod1+2 [con_mark="^_slot2$"] scratchpad show
+bindsym --to-code $mod+Mod1+3 [con_mark="^_slot3$"] scratchpad show
+bindsym --to-code $mod+Mod1+4 [con_mark="^_slot4$"] scratchpad show
+bindsym --to-code $mod+Mod1+5 [con_mark="^_slot5$"] scratchpad show
+bindsym --to-code $mod+Mod1+6 [con_mark="^_slot6$"] scratchpad show
+bindsym --to-code $mod+Mod1+7 [con_mark="^_slot7$"] scratchpad show
+bindsym --to-code $mod+Mod1+8 [con_mark="^_slot8$"] scratchpad show
+bindsym --to-code $mod+Mod1+9 [con_mark="^_slot9$"] scratchpad show
+bindsym --to-code $mod+Mod1+0 [con_mark="^_slot0$"] scratchpad show
+bindsym --to-code $mod+Mod1+Shift+1 mark _slot1, move scratchpad
+bindsym --to-code $mod+Mod1+Shift+2 mark _slot2, move scratchpad
+bindsym --to-code $mod+Mod1+Shift+3 mark _slot3, move scratchpad
+bindsym --to-code $mod+Mod1+Shift+4 mark _slot4, move scratchpad
+bindsym --to-code $mod+Mod1+Shift+5 mark _slot5, move scratchpad
+bindsym --to-code $mod+Mod1+Shift+6 mark _slot6, move scratchpad
+bindsym --to-code $mod+Mod1+Shift+7 mark _slot7, move scratchpad
+bindsym --to-code $mod+Mod1+Shift+8 mark _slot8, move scratchpad
+bindsym --to-code $mod+Mod1+Shift+9 mark _slot9, move scratchpad
+bindsym --to-code $mod+Mod1+Shift+0 mark _slot0, move scratchpad
+bindsym --to-code $mod+Mod1+minus exec scratchpad next
+bindsym --to-code $mod+Mod1+Shift+minus move scratchpad
+bindsym --to-code $mod+Mod1+s exec scratchpad pick
+bindsym --to-code $mod+Mod1+grave exec scratchpad term
+for_window [app_id="^scratch-term$"] move scratchpad, resize set 80ppt 80ppt, scratchpad show
+
 ### Раскладка окон
 # Одна клавиша вместо пары splith/splitv: направление следующего сплита
 # просто переключается повторным нажатием.

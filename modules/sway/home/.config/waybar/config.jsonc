@@ -58,12 +58,15 @@
         "format": "<span style=\"italic\">{}</span>"
     },
 
+    // Hidden windows: an icon with a count, hidden while there are none. Click —
+    // a wofi list to pick one, see ~/.local/bin/scratchpad. The glyph is Material
+    // Design from Nerd Font, U+F05B2; check edits by codepoints, not by eye.
     "sway/scratchpad": {
-        "format": "{icon} {count}",
+        "format": "󰖲 {count}",
         "show-empty": false,
-        "format-icons": ["", ""],
         "tooltip": true,
-        "tooltip-format": "{app}: {title}"
+        "tooltip-format": "{app}: {title}",
+        "on-click": "$HOME/.local/bin/scratchpad pick"
     },
 
     // us/ru layout — switched with Caps Lock or Win+Space (see sway config).

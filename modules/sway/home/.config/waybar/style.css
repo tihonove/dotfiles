@@ -151,6 +151,7 @@ button:hover {
    reach them — they need their own selectors.
    margin/border-radius are set permanently instead of on :hover: otherwise GTK
    recomputes the widget size and the bar twitches under the cursor. */
+#scratchpad,
 #pulseaudio,
 #custom-language,
 #custom-theme,
@@ -160,6 +161,7 @@ button:hover {
     transition: background-color .15s ease-in-out;
 }
 
+#scratchpad:hover,
 #pulseaudio:hover,
 #custom-language:hover,
 #custom-theme:hover,
